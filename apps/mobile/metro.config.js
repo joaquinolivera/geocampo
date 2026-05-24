@@ -19,4 +19,12 @@ config.resolver.nodeModulesPaths = [
 // Force Metro to resolve symlinks
 config.resolver.disableHierarchicalLookup = false;
 
+// Web: Mock @rnmapbox/maps to avoid mapbox-gl dependency
+if (process.env.EXPO_OS === 'web') {
+  config.resolver.extraNodeModules = {
+    ...config.resolver.extraNodeModules,
+    '@rnmapbox/maps': path.resolve(projectRoot, '__mocks__/@rnmapbox/maps.ts'),
+  };
+}
+
 module.exports = config;

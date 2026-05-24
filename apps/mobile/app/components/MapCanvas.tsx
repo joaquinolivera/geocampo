@@ -1,11 +1,22 @@
 import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text } from '@geocampo/ui';
-import Mapbox from '@rnmapbox/maps';
 import { validateHerdDrop, findContainingPasture } from '@geocampo/shared';
 import { Polygon, Position } from 'geojson';
 
-// Set Mapbox access token (should come from environment in production)
-Mapbox.setAccessToken('YOUR_MAPBOX_ACCESS_TOKEN');
+// Conditionally import Mapbox (only available on native)
+let Mapbox: any = null;
+if (typeof navigator !== 'undefined' && navigator.product !== 'ReactNative') {
+  // Web platform - Mapbox will be mocked/placeholder
+  Mapbox = null;
+} else {
+  // Native platform
+  try {
+    Mapbox = require('@rnmapbox/maps').default;
+    Mapbox.setAccessToken('YOUR_MAPBOX_ACCESS_TOKEN');
+  } catch (e) {
+    Mapbox = null;
+  }
+}
 
 export interface PastureData {
   id: string;
@@ -101,6 +112,53 @@ export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProp
     },
     [pastureLookup, pastures, onHerdMove]
   );
+
+  // Web fallback when Mapbox is not available
+  if (!Mapbox) {
+    return (
+      <View flex={1} backgroundColor="#0A0A0B" padding="$4" justifyContent="center" alignItems="center">
+        <Text color="#DEFF9A" fontSize="$8" fontWeight="bold" marginBottom="$4">
+          🗺️ GeoCampo Map
+        </Text>
+        <Text color="#FFFFFF" fontSize="$4" textAlign="center" marginBottom="$4">
+          Map view is optimized for mobile devices.
+        </Text>
+        <Text color="#6A6A6B" fontSize="$3" textAlign="center">
+          Open this app on your iPhone via Expo Go for the full interactive map experience with drag & drop herd management.
+        </Text>
+        
+        {/* Show pasture summary */}
+        <View marginTop="$6" width="100%">
+          <Text color="#DEFF9A" fontSize="$5" fontWeight="bold" marginBottom="$2">
+            Pastures ({pastures.length})
+          </Text>
+          {pastures.map((pasture) => (
+            <View key={pasture.id} backgroundColor="#1A1A1B" padding="$3" borderRadius="$2" marginBottom="$2">
+              <Text color={pasture.color} fontWeight="bold">{pasture.name}</Text>
+              <Text color="#6A6A6B" fontSize="$2">
+                {pasture.areaHectares?.toFixed(1)} hectares
+              </Text>
+            </View>
+          ))}
+        </View>
+
+        {/* Show herd summary */}
+        <View marginTop="$4" width="100%">
+          <Text color="#DEFF9A" fontSize="$5" fontWeight="bold" marginBottom="$2">
+            Herds ({herds.length})
+          </Text>
+          {herds.map((herd) => (
+            <View key={herd.id} backgroundColor="#1A1A1B" padding="$3" borderRadius="$2" marginBottom="$2">
+              <Text color="#FFFFFF" fontWeight="bold">🐄 {herd.name}</Text>
+              <Text color="#6A6A6B" fontSize="$2">
+                {herd.cattleCount} cattle • Pasture: {herd.pastureId}
+              </Text>
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  }
 
   return (
     <View flex={1}>
@@ -207,7 +265,7 @@ const MemoizedHerdMarker = React.memo(function HerdMarker({
       id={herd.id}
       coordinate={herd.coordinate}
       draggable
-      onDragEnd={(e) => onDragEnd(herd, e.geometry.coordinates)}
+      onDragEnd={(e: any) => onDragEnd(herd, e.geometry.coordinates)}
       onSelected={() => onSelect(herd.id)}
     >
       <View

@@ -4,4 +4,4 @@
  */
 
 export { TamaguiProvider, View, Text, Button, Input, Stack, YStack, XStack } from 'tamagui';
-export { config } from './tamagui.config';
+export { config } from '../tamagui.config';

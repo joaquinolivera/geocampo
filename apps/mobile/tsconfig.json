@@ -6,7 +6,8 @@
     "paths": {
       "@geocampo/database": ["../../packages/database/src"],
       "@geocampo/shared": ["../../packages/shared/src"],
-      "@geocampo/ui": ["../../packages/ui/src"]
+      "@geocampo/ui": ["../../packages/ui/src"],
+      "@/*": ["src/*"]
     }
   },
   "include": [

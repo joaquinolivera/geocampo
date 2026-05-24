@@ -5,7 +5,7 @@ import { config as tamaguiConfig } from '@tamagui/config/v3';
  * GeoCampo Design System Configuration
  * Colors: Neon Lime (#DEFF9A) on Charcoal Black (#0A0A0B)
  */
-export const config = createTamagui({
+const config = createTamagui({
   ...tamaguiConfig,
   themes: {
     ...tamaguiConfig.themes,
@@ -33,6 +33,10 @@ export const config = createTamagui({
 });
 
 export type Conf = typeof config;
+
+export default config;
+
+export { config };
 
 declare module '@tamagui/core' {
   interface TamaguiCustomConfig extends Conf {}

@@ -1,7 +1,7 @@
 module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/app'],
+  roots: ['<rootDir>/app', '<rootDir>/tests'],
   testMatch: ['**/*.test.ts', '**/*.test.tsx'],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
   transform: {
@@ -13,6 +13,7 @@ module.exports = {
     '^@geocampo/shared$': '<rootDir>/../../packages/shared/src/index.ts',
     '^@geocampo/database$': '<rootDir>/../../packages/database/src/index.ts',
     '^@rnmapbox/maps$': '<rootDir>/__mocks__/@rnmapbox/maps.ts',
+    '^@/(.*)$': '<rootDir>/src/$1',
   },
   setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
 };
