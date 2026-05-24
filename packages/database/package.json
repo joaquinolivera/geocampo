@@ -1,0 +1,25 @@
+{
+  "name": "@geocampo/database",
+  "version": "0.1.0",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "jest --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@powersync/common": "^1.0.0",
+    "@powersync/react-native": "^1.0.0",
+    "@powersync/web": "^1.0.0",
+    "expo-sqlite": "~15.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.12",
+    "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-native": "*"
+  }
+}
