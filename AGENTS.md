@@ -57,14 +57,15 @@ geocampo/
 
 - **Phase 0 ✅ COMPLETE** — Feature-based folder structure + `schema.sql` for Supabase (PostGIS, tables: `farms`, `pastures`, `herds`, `weights`, `health`, `movements`)
 - **Phase 1 ✅ COMPLETE** — Expo monorepo initialized with TypeScript, PowerSync SDK installed, local SQLite schema implemented
-- **Phase 2 🔄 NEXT** — GIS Core & Herd Management (MapCanvas with Mapbox, Drag & Drop between pastures, Turf.js validation)
+- **Phase 2 ✅ COMPLETE** — GIS Core & Herd Management (MapCanvas with Mapbox, Drag & Drop between pastures, Turf.js Point-in-Polygon validation, PowerSync movement recording)
 - **Phase 3 ⏳ PENDING** — Quality & Optimization (memory audit, sync conflict resolution)
 
 ## Test Results
 
-- **56 tests passing** across all packages
+- **77 tests passing** across all packages
 - Root tests: Supabase schema validation (24 tests), Mobile structure validation (7 tests)
-- Package tests: Database schema (13 tests), PowerSync setup (4 tests), Shared utilities (8 tests)
+- Package tests: Database schema (13 tests), PowerSync setup (4 tests), Shared utilities (8 tests), Geo validation (11 tests)
+- Mobile tests: Movements service (4 tests), Herd drag-drop hook (2 tests), MapCanvas logic (4 tests)
 
 ## Agentic Workflow Origin
 

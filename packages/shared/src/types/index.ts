@@ -77,17 +77,4 @@ export interface Movement {
   createdAt: Date;
 }
 
-// Re-export GeoJSON namespace for convenience
-declare global {
-  namespace GeoJSON {
-    interface Point {
-      type: 'Point';
-      coordinates: [number, number]; // [longitude, latitude]
-    }
-
-    interface Polygon {
-      type: 'Polygon';
-      coordinates: [number, number][][]; // Array of linear rings
-    }
-  }
-}
+// GeoJSON types are provided by @types/geojson package

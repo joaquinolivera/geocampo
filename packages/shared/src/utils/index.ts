@@ -2,6 +2,8 @@
  * @fileoverview Shared Utilities
  */
 
+export * from './geo';
+
 /**
  * Convert a Date to SQLite timestamp (milliseconds since epoch)
  */

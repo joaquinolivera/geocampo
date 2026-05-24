@@ -76,7 +76,7 @@ All tables sync bidirectionally with the local SQLite database via PowerSync.
 
 - ✅ **Phase 0** — Structure & Data (folder structure, PostGIS schema)
 - ✅ **Phase 1** — Project Init (Expo monorepo, PowerSync, local schema)
-- 🔄 **Phase 2** — GIS Core & Herd Management (Mapbox, drag & drop, Turf.js)
+- ✅ **Phase 2** — GIS Core & Herd Management (Mapbox MapCanvas, drag & drop, Turf.js validation)
 - ⏳ **Phase 3** — Quality & Optimization
 
 ## License
