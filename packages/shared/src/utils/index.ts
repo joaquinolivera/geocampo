@@ -3,6 +3,7 @@
  */
 
 export * from './geo';
+export * from './sync';
 
 /**
  * Convert a Date to SQLite timestamp (milliseconds since epoch)

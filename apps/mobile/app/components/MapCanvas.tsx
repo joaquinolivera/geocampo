@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text } from '@geocampo/ui';
 import Mapbox from '@rnmapbox/maps';
 import { validateHerdDrop, findContainingPasture } from '@geocampo/shared';
@@ -30,41 +30,51 @@ export interface MapCanvasProps {
 }
 
 /**
- * MapCanvas Component
- * Displays pasture polygons and draggable herd markers on a Mapbox map.
- * Validates herd drops using Turf.js Point-in-Polygon.
+ * MapCanvas Component (Phase 3 Optimized)
+ * 
+ * Memory optimizations:
+ * - pastureGeoJSON memoized with useMemo (prevents rebuild on every render)
+ * - Herd markers memoized per-herd to prevent unnecessary re-renders
+ * - Callbacks memoized with useCallback stable dependencies
+ * - FeatureCollection ID stable to prevent Mapbox layer recreation
  */
 export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProps) {
   const [selectedHerd, setSelectedHerd] = useState<string | null>(null);
   const [dragError, setDragError] = useState<string | null>(null);
 
-  // Build GeoJSON FeatureCollection for pasture polygons
-  const pastureGeoJSON = {
-    type: 'FeatureCollection' as const,
-    features: pastures.map((pasture) => ({
-      type: 'Feature' as const,
-      properties: {
-        id: pasture.id,
-        name: pasture.name,
-        color: pasture.color,
-      },
-      geometry: pasture.geometry,
-    })),
-  };
+  // Phase 3: Memoize GeoJSON FeatureCollection to prevent rebuild on every render
+  // This is critical for memory when polygons have many coordinates
+  const pastureGeoJSON = useMemo(() => {
+    return {
+      type: 'FeatureCollection' as const,
+      features: pastures.map((pasture) => ({
+        type: 'Feature' as const,
+        properties: {
+          id: pasture.id,
+          name: pasture.name,
+          color: pasture.color,
+        },
+        geometry: pasture.geometry,
+      })),
+    };
+  }, [pastures]);
 
-  // Handle herd marker drag end
+  // Phase 3: Memoize the pasture lookup array for drag validation
+  // Prevents re-mapping the array on every drag operation
+  const pastureLookup = useMemo(
+    () => pastures.map((p) => ({ id: p.id, geometry: p.geometry })),
+    [pastures]
+  );
+
+  // Phase 3: Stable callback with minimal dependencies
   const handleHerdDragEnd = useCallback(
     (herd: HerdData, coordinate: Position) => {
       setDragError(null);
 
-      // Convert to tuple
       const coord: [number, number] = [coordinate[0], coordinate[1]];
 
-      // Find which pasture contains the dropped coordinate
-      const targetPastureId = findContainingPasture(
-        coord,
-        pastures.map((p) => ({ id: p.id, geometry: p.geometry }))
-      );
+      // Use memoized pasture lookup
+      const targetPastureId = findContainingPasture(coord, pastureLookup);
 
       if (!targetPastureId) {
         setDragError('Herd must be dropped inside a pasture boundary');
@@ -76,7 +86,7 @@ export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProp
         return;
       }
 
-      // Validate with Turf.js
+      // Final Turf.js validation
       const targetPasture = pastures.find((p) => p.id === targetPastureId);
       if (targetPasture) {
         const validation = validateHerdDrop(coord, targetPasture.geometry, targetPastureId);
@@ -86,11 +96,10 @@ export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProp
         }
       }
 
-      // Success - trigger movement
       onHerdMove(herd.id, herd.pastureId, targetPastureId, coord);
       setSelectedHerd(null);
     },
-    [pastures, onHerdMove]
+    [pastureLookup, pastures, onHerdMove]
   );
 
   return (
@@ -103,10 +112,10 @@ export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProp
       >
         <Mapbox.Camera
           zoomLevel={14}
-          centerCoordinate={[-58.4, -34.6]} // Default center (Buenos Aires area)
+          centerCoordinate={[-58.4, -34.6]}
         />
 
-        {/* Pasture Polygons Layer */}
+        {/* Pasture Polygons Layer - ShapeSource only re-renders when pastures change */}
         <Mapbox.ShapeSource id="pastures" shape={pastureGeoJSON}>
           <Mapbox.FillLayer
             id="pastureFill"
@@ -124,34 +133,15 @@ export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProp
           />
         </Mapbox.ShapeSource>
 
-        {/* Herd Markers */}
+        {/* Phase 3: Memoized Herd Markers - each only re-renders when its own data changes */}
         {herds.map((herd) => (
-          <Mapbox.PointAnnotation
+          <MemoizedHerdMarker
             key={herd.id}
-            id={herd.id}
-            coordinate={herd.coordinate}
-            draggable
-            onDragEnd={(e) => handleHerdDragEnd(herd, e.geometry.coordinates)}
-            onSelected={() => setSelectedHerd(herd.id)}
-          >
-            <View
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 20,
-                backgroundColor: '#DEFF9A',
-                borderWidth: 3,
-                borderColor: selectedHerd === herd.id ? '#FFFFFF' : '#0A0A0B',
-                justifyContent: 'center',
-                alignItems: 'center',
-              }}
-            >
-              <Text fontSize={20}>🐄</Text>
-              <Text fontSize={10} color="#0A0A0B" fontWeight="bold">
-                {herd.cattleCount}
-              </Text>
-            </View>
-          </Mapbox.PointAnnotation>
+            herd={herd}
+            isSelected={selectedHerd === herd.id}
+            onDragEnd={handleHerdDragEnd}
+            onSelect={setSelectedHerd}
+          />
         ))}
       </Mapbox.MapView>
 
@@ -186,7 +176,7 @@ export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProp
           borderColor="#DEFF9A"
         >
           <Text color="#DEFF9A" fontWeight="bold" fontSize={16}>
-            🐄 {herds.find((h) => h.id === selectedHerd)?.name}
+            {herds.find((h) => h.id === selectedHerd)?.name}
           </Text>
           <Text color="#6A6A6B" fontSize={14}>
             Drag the herd marker to move to a different pasture
@@ -196,3 +186,47 @@ export default function MapCanvas({ pastures, herds, onHerdMove }: MapCanvasProp
     </View>
   );
 }
+
+/**
+ * Phase 3: Memoized Herd Marker
+ * Prevents re-render when parent re-renders unless this herd's own data changes
+ */
+const MemoizedHerdMarker = React.memo(function HerdMarker({
+  herd,
+  isSelected,
+  onDragEnd,
+  onSelect,
+}: {
+  herd: HerdData;
+  isSelected: boolean;
+  onDragEnd: (herd: HerdData, coordinate: Position) => void;
+  onSelect: (id: string | null) => void;
+}) {
+  return (
+    <Mapbox.PointAnnotation
+      id={herd.id}
+      coordinate={herd.coordinate}
+      draggable
+      onDragEnd={(e) => onDragEnd(herd, e.geometry.coordinates)}
+      onSelected={() => onSelect(herd.id)}
+    >
+      <View
+        style={{
+          width: 40,
+          height: 40,
+          borderRadius: 20,
+          backgroundColor: '#DEFF9A',
+          borderWidth: 3,
+          borderColor: isSelected ? '#FFFFFF' : '#0A0A0B',
+          justifyContent: 'center',
+          alignItems: 'center',
+        }}
+      >
+        <Text fontSize={20}>🐄</Text>
+        <Text fontSize={10} color="#0A0A0B" fontWeight="bold">
+          {herd.cattleCount}
+        </Text>
+      </View>
+    </Mapbox.PointAnnotation>
+  );
+});
