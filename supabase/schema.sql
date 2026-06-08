@@ -9,13 +9,18 @@ create extension if not exists postgis;
 -- ============================================
 create table if not exists farms (
     id uuid primary key default gen_random_uuid(),
+    owner_id uuid references auth.users(id) on delete set null, -- Supabase Auth user
     name text not null,
+    slug text unique not null, -- URL-safe identifier, e.g. 'estancia-las-pampas'
     location geometry(point, 4326), -- WGS 84 coordinate system
     total_area_hectares decimal(10, 2),
     owner_name text,
     created_at timestamptz default now(),
     updated_at timestamptz default now()
 );
+
+create index if not exists idx_farms_owner on farms(owner_id);
+create index if not exists idx_farms_slug on farms(slug);
 
 comment on table farms is 'Farms and ranches managed in the system';
 
@@ -215,11 +220,47 @@ create trigger log_movement_on_herd_change
 -- ============================================
 
 -- Insert sync rules for PowerSync
+-- ============================================
+-- INFRASTRUCTURE FEATURES (Infraestructura)
+-- ============================================
+create table if not exists infrastructure_features (
+    id uuid primary key default gen_random_uuid(),
+    farm_id uuid not null references farms(id) on delete cascade,
+    type text not null check (type in ('water', 'fence', 'corral', 'building')),
+    subtype text not null, -- tajamar, molino, bebedero, alambrado, manga, casco, galpon…
+    name text not null,
+    geometry geometry not null, -- Point, LineString, or Polygon
+    condition text not null default 'buena' check (condition in ('buena', 'regular', 'mala')),
+    capacity integer, -- m³ for water, heads for corrals
+    notes text,
+    created_at timestamptz default now(),
+    updated_at timestamptz default now()
+);
+
+comment on table infrastructure_features is
+  'Farm infrastructure: water points, fences, corrals, and buildings';
+
+create index if not exists idx_infra_farm on infrastructure_features(farm_id);
+create index if not exists idx_infra_type  on infrastructure_features(type);
+create index if not exists idx_infra_geometry on infrastructure_features using gist(geometry);
+
+-- Row Level Security — each user can only read their own farm's infrastructure
+alter table infrastructure_features enable row level security;
+
+create policy "Users can view their farm infrastructure"
+  on infrastructure_features for select
+  using (
+    farm_id in (
+      select id from farms where owner_id = auth.uid()
+    )
+  );
+
 insert into powersync_sync_rules (table_name, download_predicate) values
-    ('farms', null), -- Sync all farms
-    ('pastures', null), -- Sync all pastures
-    ('herds', null), -- Sync all herds
-    ('weights', null), -- Sync all weights
-    ('health', null), -- Sync all health records
-    ('movements', null) -- Sync all movements
+    ('farms', null),
+    ('pastures', null),
+    ('herds', null),
+    ('weights', null),
+    ('health', null),
+    ('movements', null),
+    ('infrastructure_features', null)
 on conflict (table_name) do nothing;

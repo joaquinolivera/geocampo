@@ -4,10 +4,24 @@
     "strict": true,
     "baseUrl": ".",
     "paths": {
-      "@geocampo/database": ["../../packages/database/src"],
-      "@geocampo/shared": ["../../packages/shared/src"],
-      "@geocampo/ui": ["../../packages/ui/src"],
-      "@/*": ["src/*"]
+      "@geocampo/database": [
+        "../../packages/database/src"
+      ],
+      "@geocampo/shared": [
+        "../../packages/shared/src"
+      ],
+      "@geocampo/ui": [
+        "../../packages/ui/src"
+      ],
+      "@/*": [
+        "src/*"
+      ],
+      "@geocampo/i18n": [
+        "../../packages/i18n/src"
+      ],
+      "@geocampo/i18n/*": [
+        "../../packages/i18n/src/*"
+      ]
     }
   },
   "include": [
@@ -15,5 +29,8 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
+  ],
+  "exclude": [
+    "__mocks__"
   ]
 }

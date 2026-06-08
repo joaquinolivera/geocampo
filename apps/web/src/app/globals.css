@@ -1,0 +1,56 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* mapbox-gl CSS is imported in layout.tsx as a JS side-effect import
+   to avoid PostCSS @import ordering restrictions */
+
+:root {
+  --color-charcoal: #0A0A0B;
+  --color-surface: #1A1A1B;
+  --color-surface2: #2A2A2B;
+  --color-lime: #DEFF9A;
+  --color-warning: #FFB444;
+  --color-critical: #FF4444;
+  --color-muted: #6A6A6B;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-charcoal);
+  color: #fff;
+  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 4px;
+}
+::-webkit-scrollbar-track {
+  background: var(--color-surface);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-surface2);
+  border-radius: 4px;
+}
+
+/* Mapbox attribution — keep but style to match theme */
+.mapboxgl-ctrl-attrib {
+  background: rgba(10, 10, 11, 0.7) !important;
+  color: var(--color-muted) !important;
+  font-size: 10px !important;
+}
+.mapboxgl-ctrl-attrib a {
+  color: var(--color-muted) !important;
+}
+.mapboxgl-ctrl-logo {
+  opacity: 0.5;
+}

@@ -39,3 +39,10 @@ coverage/
 # Temporary
 tmp/
 temp/
+.npmrc
+.env.local
+.env*.local
+apps/**/.env.local
+apps/**/.env*.local
+.next/
+apps/web/.next/
