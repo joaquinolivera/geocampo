@@ -1,5 +1,6 @@
 /** Phase I — ERP machinery & maintenance */
 import { IS_DEMO_MODE, requireClient } from './_base';
+import { loadStoredFarm, addMachine as storeAdd } from '@/lib/farm-store';
 
 export interface Machine {
   id:            string;
@@ -28,30 +29,37 @@ export interface Maintenance {
 }
 
 export const machineryDb = {
-  async list(farmId: string): Promise<Machine[]> {
-    if (IS_DEMO_MODE) return [];
+  async list(_farmId: string): Promise<Machine[]> {
+    if (IS_DEMO_MODE) {
+      const farm = loadStoredFarm();
+      return (farm?.machinery ?? []).map(normMachine);
+    }
     const client = requireClient();
     const { data, error } = await client
-      .from('machinery').select('*').eq('farm_id', farmId).order('name');
+      .from('machinery').select('*').eq('farm_id', _farmId).order('name');
     if (error) throw error;
     return (data ?? []).map(mapMachine);
   },
 
-  async listMaintenance(farmId: string, machineryId?: string): Promise<Maintenance[]> {
+  async listMaintenance(_farmId: string, machineryId?: string): Promise<Maintenance[]> {
     if (IS_DEMO_MODE) return [];
     const client = requireClient();
-    let q = client.from('machinery_maintenance').select('*').eq('farm_id', farmId).order('date', { ascending: false });
+    let q = client.from('machinery_maintenance').select('*').eq('farm_id', _farmId).order('date', { ascending: false });
     if (machineryId) q = q.eq('machinery_id', machineryId);
     const { data, error } = await q;
     if (error) throw error;
     return (data ?? []).map(mapMaintenance);
   },
 
-  async add(farmId: string, input: Omit<Machine, 'id' | 'farmId'>): Promise<Machine> {
-    if (IS_DEMO_MODE) throw new Error('ERP requires a Supabase connection.');
+  async add(_farmId: string, input: Omit<Machine, 'id' | 'farmId'>): Promise<Machine> {
+    if (IS_DEMO_MODE) {
+      const m = storeAdd(input);
+      if (!m) throw new Error('No se pudo guardar la maquinaria.');
+      return normMachine(m);
+    }
     const client = requireClient();
     const { data, error } = await client.from('machinery').insert({
-      farm_id:       farmId,
+      farm_id:       _farmId,
       name:          input.name,
       type:          input.type ?? null,
       brand:         input.brand ?? null,
@@ -66,11 +74,11 @@ export const machineryDb = {
     return mapMachine(data);
   },
 
-  async addMaintenance(farmId: string, input: Omit<Maintenance, 'id' | 'farmId'>): Promise<Maintenance> {
+  async addMaintenance(_farmId: string, input: Omit<Maintenance, 'id' | 'farmId'>): Promise<Maintenance> {
     if (IS_DEMO_MODE) throw new Error('ERP requires a Supabase connection.');
     const client = requireClient();
     const { data, error } = await client.from('machinery_maintenance').insert({
-      farm_id:           farmId,
+      farm_id:           _farmId,
       machinery_id:      input.machineryId,
       date:              input.date.toISOString().slice(0, 10),
       description:       input.description,
@@ -83,6 +91,15 @@ export const machineryDb = {
     return mapMaintenance(data);
   },
 };
+
+function normMachine(m: Machine): Machine {
+  return {
+    ...m,
+    purchaseDate: m.purchaseDate
+      ? (m.purchaseDate instanceof Date ? m.purchaseDate : new Date(m.purchaseDate as unknown as string))
+      : null,
+  };
+}
 
 function mapMachine(r: Record<string, unknown>): Machine {
   return {

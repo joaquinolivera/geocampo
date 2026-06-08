@@ -1,5 +1,6 @@
 /** Phase I — ERP fuel logs */
 import { IS_DEMO_MODE, requireClient } from './_base';
+import { loadStoredFarm, addFuelLog as storeAdd } from '@/lib/farm-store';
 
 export interface FuelLog {
   id:               string;
@@ -26,7 +27,13 @@ export interface AddFuelLogInput {
 
 export const fuelDb = {
   async list(farmId: string, from?: Date, to?: Date): Promise<FuelLog[]> {
-    if (IS_DEMO_MODE) return [];
+    if (IS_DEMO_MODE) {
+      const farm = loadStoredFarm();
+      let all = (farm?.fuelLogs ?? []).map(normDate);
+      if (from) all = all.filter((f) => f.date >= from);
+      if (to)   all = all.filter((f) => f.date <= to);
+      return all.sort((a, b) => b.date.getTime() - a.date.getTime());
+    }
     const client = requireClient();
     let q = client.from('fuel_logs').select('*').eq('farm_id', farmId).order('date', { ascending: false });
     if (from) q = q.gte('date', from.toISOString().slice(0, 10));
@@ -37,7 +44,11 @@ export const fuelDb = {
   },
 
   async add(farmId: string, input: AddFuelLogInput): Promise<FuelLog> {
-    if (IS_DEMO_MODE) throw new Error('ERP requires a Supabase connection.');
+    if (IS_DEMO_MODE) {
+      const log = storeAdd(input);
+      if (!log) throw new Error('No se pudo guardar el registro.');
+      return normDate(log);
+    }
     const client = requireClient();
     const total = input.costPerLiter != null ? input.liters * input.costPerLiter : null;
     const { data, error } = await client.from('fuel_logs').insert({
@@ -55,6 +66,10 @@ export const fuelDb = {
     return mapRow(data);
   },
 };
+
+function normDate(f: FuelLog): FuelLog {
+  return { ...f, date: f.date instanceof Date ? f.date : new Date(f.date as unknown as string) };
+}
 
 function mapRow(r: Record<string, unknown>): FuelLog {
   return {

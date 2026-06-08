@@ -1,5 +1,6 @@
 /** Phase I — ERP employee management */
 import { IS_DEMO_MODE, requireClient } from './_base';
+import { loadStoredFarm, addEmployee as storeAddEmployee } from '@/lib/farm-store';
 
 export interface Employee {
   id:             string;
@@ -25,21 +26,29 @@ export interface AddEmployeeInput {
 }
 
 export const employeesDb = {
-  async list(farmId: string, activeOnly = true): Promise<Employee[]> {
-    if (IS_DEMO_MODE) return [];
+  async list(_farmId: string, activeOnly = true): Promise<Employee[]> {
+    if (IS_DEMO_MODE) {
+      const farm = loadStoredFarm();
+      const all = (farm?.employees ?? []).map(normalizeDates);
+      return activeOnly ? all.filter((e) => e.active) : all;
+    }
     const client = requireClient();
-    let q = client.from('employees').select('*').eq('farm_id', farmId).order('name');
+    let q = client.from('employees').select('*').eq('farm_id', _farmId).order('name');
     if (activeOnly) q = q.eq('active', true);
     const { data, error } = await q;
     if (error) throw error;
     return (data ?? []).map(mapRow);
   },
 
-  async add(farmId: string, input: AddEmployeeInput): Promise<Employee> {
-    if (IS_DEMO_MODE) throw new Error('ERP requires a Supabase connection.');
+  async add(_farmId: string, input: AddEmployeeInput): Promise<Employee> {
+    if (IS_DEMO_MODE) {
+      const emp = storeAddEmployee(input);
+      if (!emp) throw new Error('No se pudo guardar el empleado.');
+      return normalizeDates(emp);
+    }
     const client = requireClient();
     const { data, error } = await client.from('employees').insert({
-      farm_id:        farmId,
+      farm_id:        _farmId,
       name:           input.name,
       role:           input.role ?? null,
       id_number:      input.idNumber ?? null,
@@ -53,12 +62,29 @@ export const employeesDb = {
   },
 
   async deactivate(employeeId: string): Promise<void> {
-    if (IS_DEMO_MODE) throw new Error('ERP requires a Supabase connection.');
+    if (IS_DEMO_MODE) {
+      const farm = loadStoredFarm();
+      if (farm) {
+        farm.employees = (farm.employees ?? []).map((e) =>
+          e.id === employeeId ? { ...e, active: false } : e
+        );
+        const { saveStoredFarm } = await import('@/lib/farm-store');
+        saveStoredFarm(farm);
+      }
+      return;
+    }
     const client = requireClient();
     const { error } = await client.from('employees').update({ active: false }).eq('id', employeeId);
     if (error) throw error;
   },
 };
+
+function normalizeDates(e: Employee): Employee {
+  return {
+    ...e,
+    hireDate: e.hireDate ? (e.hireDate instanceof Date ? e.hireDate : new Date(e.hireDate as unknown as string)) : null,
+  };
+}
 
 function mapRow(r: Record<string, unknown>): Employee {
   return {

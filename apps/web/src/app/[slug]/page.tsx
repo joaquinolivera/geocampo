@@ -7,9 +7,11 @@ import Sidebar from '@/components/Sidebar';
 import ParcelDetailPanel from '@/components/ParcelDetailPanel';
 import InfraDetailPanel from '@/components/InfraDetailPanel';
 import PastureFormModal from '@/components/PastureFormModal';
+import ERPPanel from '@/components/ERPPanel';
+import ChatPanel from '@/components/ChatPanel';
 import type { SelectionState } from '@/lib/selection';
 import { useFarmData } from '@/lib/FarmDataContext';
-import { polygonAreaHectares } from '@/lib/farm-store';
+import { polygonAreaHectares, updatePasture } from '@/lib/farm-store';
 
 // Map must be dynamically imported — mapbox-gl uses browser APIs (no SSR)
 const FarmMap = dynamic(() => import('@/components/FarmMap'), {
@@ -39,24 +41,53 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
   const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
   const [showPastureForm, setShowPastureForm] = useState(false);
 
+  // ERP panel toggle
+  const [showERP, setShowERP] = useState(false);
+
+  // Chat panel toggle
+  const [showChat, setShowChat] = useState(false);
+
+  // Redraw mode — when set, finalizing replaces an existing pasture's polygon
+  const [redrawPastureId, setRedrawPastureId] = useState<string | null>(null);
+
   function clearSelection() {
     setSelection(null);
   }
 
   function startDrawing() {
-    setSelection(null); // close any open panel
+    setRedrawPastureId(null);
+    setSelection(null);
     setDrawingPoints([]);
     setDrawingMode(true);
   }
 
+  /** Called from ParcelDetailPanel → "Redibujar límite" */
+  const startRedraw = useCallback((pastureId: string) => {
+    setRedrawPastureId(pastureId);
+    setSelection(null);
+    setDrawingPoints([]);
+    setDrawingMode(true);
+  }, []);
+
   function cancelDrawing() {
     setDrawingMode(false);
     setDrawingPoints([]);
+    setRedrawPastureId(null);
   }
 
   function finalizeDrawing() {
     if (drawingPoints.length < 3) return;
-    setShowPastureForm(true);
+    if (redrawPastureId) {
+      // Redraw path — update existing pasture's geometry
+      const coords: [number, number][][] = [[...drawingPoints, drawingPoints[0]]];
+      updatePasture(redrawPastureId, { coordinates: coords });
+      refresh();
+      setDrawingMode(false);
+      setDrawingPoints([]);
+      setRedrawPastureId(null);
+    } else {
+      setShowPastureForm(true);
+    }
   }
 
   const handleDrawClick = useCallback((pt: [number, number]) => {
@@ -86,13 +117,24 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
       ? polygonAreaHectares(drawnCoordinates)
       : 0;
 
+  const isRedrawMode = drawingMode && redrawPastureId !== null;
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-charcoal">
-      <TopBar onLogout={clearSelection} />
+      <TopBar
+        onLogout={clearSelection}
+        onToggleERP={() => setShowERP((v) => !v)}
+        erpOpen={showERP}
+        onToggleChat={() => setShowChat((v) => !v)}
+        chatOpen={showChat}
+      />
 
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Left sidebar — parcelas + infraestructura + alertas */}
-        <Sidebar selection={selection} onSelect={setSelection} />
+        {/* Left sidebar — toggle between map sidebar and ERP panel */}
+        {showERP
+          ? <ERPPanel onClose={() => setShowERP(false)} />
+          : <Sidebar selection={selection} onSelect={setSelection} />
+        }
 
         {/* Interactive satellite map */}
         <FarmMap
@@ -111,7 +153,9 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
           >
             <span className="text-white text-sm font-medium">
               {drawingPoints.length === 0
-                ? 'Hacé clic en el mapa para marcar vértices del potrero'
+                ? isRedrawMode
+                  ? 'Dibujá el nuevo límite del potrero'
+                  : 'Hacé clic en el mapa para marcar vértices del potrero'
                 : drawingPoints.length < 3
                 ? `${drawingPoints.length} punto${drawingPoints.length > 1 ? 's' : ''} — mínimo 3`
                 : `${drawingPoints.length} vértices — listo para guardar`}
@@ -122,7 +166,7 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
                 className="rounded-xl px-4 py-1.5 text-sm font-bold transition-all"
                 style={{ backgroundColor: '#DEFF9A', color: '#0A0A0B' }}
               >
-                Finalizar potrero
+                {isRedrawMode ? 'Guardar nuevo límite' : 'Finalizar potrero'}
               </button>
             )}
             <button
@@ -147,16 +191,25 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
           </button>
         )}
 
-        {/* Right detail panel — slides over the map */}
-        {!drawingMode && selection?.type === 'pasture' && (
-          <ParcelDetailPanel pastureId={selection.id} onClose={clearSelection} />
+        {/* Chat panel — slides in from the right */}
+        {showChat && (
+          <ChatPanel onClose={() => setShowChat(false)} />
         )}
-        {!drawingMode && selection?.type === 'infra' && (
+
+        {/* Right detail panel — slides over the map */}
+        {!drawingMode && !showChat && selection?.type === 'pasture' && (
+          <ParcelDetailPanel
+            pastureId={selection.id}
+            onClose={clearSelection}
+            onStartRedraw={startRedraw}
+          />
+        )}
+        {!drawingMode && !showChat && selection?.type === 'infra' && (
           <InfraDetailPanel featureId={selection.id} onClose={clearSelection} />
         )}
       </div>
 
-      {/* Pasture form modal — appears after polygon is finalized */}
+      {/* Pasture form modal — appears after polygon is finalized (new pasture only) */}
       {showPastureForm && drawnCoordinates.length > 0 && (
         <PastureFormModal
           coordinates={drawnCoordinates}
