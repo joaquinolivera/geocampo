@@ -75,7 +75,7 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       PASTURES: stored.pastures,
       HERDS: stored.herds.map((h) => ({
         ...h,
-        species: (h as { species?: string }).species ?? 'bovino',
+        species: ((h as { species?: string }).species ?? 'bovino') as import('@/lib/data').HerdSpecies,
         entryDate: typeof h.entryDate === 'string' ? new Date(h.entryDate) : h.entryDate,
       })),
       WEIGHTS: stored.weightRecords.map((w) => ({
