@@ -25,6 +25,8 @@ import { useT } from '@/lib/i18n';
 interface ParcelDetailPanelProps {
   pastureId: string;
   onClose: () => void;
+  /** Called when the user wants to redraw this pasture's boundary on the map */
+  onStartRedraw?: (pastureId: string) => void;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -68,7 +70,7 @@ const WATER_LABELS: Record<WaterSupplyType, { label: string; icon: string }> = {
   none:      { label: 'Sin agua propia',    icon: '❌' },
 };
 
-export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPanelProps) {
+export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }: ParcelDetailPanelProps) {
   const { t } = useT();
   const { PASTURES, HERDS, WEIGHTS, HEALTH_RECORDS, MOVEMENTS, refresh, isCustomFarm } = useFarmData();
   const [showWeightModal, setShowWeightModal] = useState(false);
@@ -520,9 +522,18 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
           </Section>
         )}
 
-        {/* Delete pasture — only for real farms */}
+        {/* Delete / redraw pasture — only for real farms */}
         {isCustomFarm && (
           <Section title="Zona de peligro">
+            {onStartRedraw && (
+              <button
+                onClick={() => { onClose(); onStartRedraw(pastureId); }}
+                className="w-full mb-2 rounded-xl py-2.5 text-sm font-medium transition-all border border-dashed border-yellow-900 hover:border-yellow-500 text-yellow-700 hover:text-yellow-400"
+                style={{ backgroundColor: 'transparent' }}
+              >
+                🗺 Redibujar límite del potrero
+              </button>
+            )}
             {!deleteConfirm ? (
               <button
                 onClick={() => { setDeleteConfirm(true); setDeleteError(null); }}

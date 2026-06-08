@@ -1,5 +1,6 @@
 /** Phase I — ERP expenses */
 import { IS_DEMO_MODE, requireClient } from './_base';
+import { loadStoredFarm, addExpense as storeAdd } from '@/lib/farm-store';
 
 export type ExpenseCategory =
   | 'veterinary' | 'feed' | 'fuel' | 'labor'
@@ -31,10 +32,16 @@ export interface AddExpenseInput {
 }
 
 export const expensesDb = {
-  async list(farmId: string, from?: Date, to?: Date): Promise<Expense[]> {
-    if (IS_DEMO_MODE) return [];
+  async list(_farmId: string, from?: Date, to?: Date): Promise<Expense[]> {
+    if (IS_DEMO_MODE) {
+      const farm = loadStoredFarm();
+      let all = (farm?.expenses ?? []).map(normDate);
+      if (from) all = all.filter((e) => e.date >= from);
+      if (to)   all = all.filter((e) => e.date <= to);
+      return all.sort((a, b) => b.date.getTime() - a.date.getTime());
+    }
     const client = requireClient();
-    let q = client.from('expenses').select('*').eq('farm_id', farmId).order('date', { ascending: false });
+    let q = client.from('expenses').select('*').eq('farm_id', _farmId).order('date', { ascending: false });
     if (from) q = q.gte('date', from.toISOString().slice(0, 10));
     if (to)   q = q.lte('date', to.toISOString().slice(0, 10));
     const { data, error } = await q;
@@ -42,11 +49,15 @@ export const expensesDb = {
     return (data ?? []).map(mapRow);
   },
 
-  async add(farmId: string, input: AddExpenseInput): Promise<Expense> {
-    if (IS_DEMO_MODE) throw new Error('ERP requires a Supabase connection.');
+  async add(_farmId: string, input: AddExpenseInput): Promise<Expense> {
+    if (IS_DEMO_MODE) {
+      const exp = storeAdd(input);
+      if (!exp) throw new Error('No se pudo guardar el gasto.');
+      return normDate(exp);
+    }
     const client = requireClient();
     const { data, error } = await client.from('expenses').insert({
-      farm_id:                farmId,
+      farm_id:                _farmId,
       date:                   input.date.toISOString().slice(0, 10),
       category:               input.category,
       description:            input.description,
@@ -61,11 +72,18 @@ export const expensesDb = {
   },
 
   /** Cost per head for a given farm + date range */
-  async costPerHead(farmId: string, from: Date, to: Date) {
-    if (IS_DEMO_MODE) return [];
+  async costPerHead(_farmId: string, from: Date, to: Date) {
+    if (IS_DEMO_MODE) {
+      const farm = loadStoredFarm();
+      const all = (farm?.expenses ?? []).map(normDate).filter(
+        (e) => e.date >= from && e.date <= to
+      );
+      const total = all.reduce((s, e) => s + e.amount, 0);
+      return [{ total_cost: total, cost_per_head: null }];
+    }
     const client = requireClient();
     const { data, error } = await client.rpc('cost_per_head', {
-      p_farm_id:   farmId,
+      p_farm_id:   _farmId,
       p_from_date: from.toISOString().slice(0, 10),
       p_to_date:   to.toISOString().slice(0, 10),
     });
@@ -73,6 +91,10 @@ export const expensesDb = {
     return data ?? [];
   },
 };
+
+function normDate(e: Expense): Expense {
+  return { ...e, date: e.date instanceof Date ? e.date : new Date(e.date as unknown as string) };
+}
 
 function mapRow(r: Record<string, unknown>): Expense {
   return {

@@ -48,6 +48,7 @@ export const pasturesDb = {
       ...(input.grassType         !== undefined && { grass_type:        input.grassType }),
       ...(input.waterSupply       !== undefined && { water_supply:      input.waterSupply }),
       ...(input.notes             !== undefined && { notes:             input.notes }),
+      ...(input.coordinates       !== undefined && { coordinates:       input.coordinates }),
     }).eq('id', pastureId).select().single();
     if (error) throw error;
     return data;

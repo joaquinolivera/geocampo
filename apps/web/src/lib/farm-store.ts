@@ -8,6 +8,10 @@
  */
 
 import type { Pasture, Herd, HerdSpecies, InfrastructureFeature, Movement, HealthRecord, WeightRecord, GrassType, WaterSupplyType } from './data';
+import type { Employee, AddEmployeeInput } from './db/employees';
+import type { FuelLog, AddFuelLogInput } from './db/fuel';
+import type { Expense, AddExpenseInput } from './db/expenses';
+import type { Machine } from './db/machinery';
 
 const STORE_KEY = 'geocampo_farm_v1';
 
@@ -25,6 +29,11 @@ export interface StoredFarm {
   movements: Movement[];
   healthRecords: HealthRecord[];
   weightRecords: WeightRecord[];
+  // Phase I — ERP (optional so old stored data stays compatible)
+  employees?:   Employee[];
+  fuelLogs?:    FuelLog[];
+  expenses?:    Expense[];
+  machinery?:   Machine[];
   createdAt: string;
   updatedAt: string;
 }
@@ -154,11 +163,12 @@ export interface UpdatePastureInput {
   grassType?: GrassType;
   waterSupply?: WaterSupplyType;
   notes?: string;
+  /** Replace the polygon boundary (closed ring array from drawing mode) */
+  coordinates?: [number, number][][];
 }
 
 /**
- * Partially update a pasture's metadata (name, capacity, grass type, etc.).
- * Does NOT update geometry/area — use addPasture for that.
+ * Partially update a pasture's metadata and/or geometry.
  * Returns the updated StoredFarm, or null if farm/pasture not found.
  */
 export function updatePasture(
@@ -171,18 +181,23 @@ export function updatePasture(
   const idx = farm.pastures.findIndex((p) => p.id === pastureId);
   if (idx === -1) return null;
 
-  farm.pastures = farm.pastures.map((p) =>
-    p.id === pastureId
-      ? {
-          ...p,
-          ...(input.name !== undefined && { name: input.name }),
-          ...(input.carryingCapacity !== undefined && { carryingCapacity: input.carryingCapacity }),
-          ...(input.grassType !== undefined && { grassType: input.grassType }),
-          ...(input.waterSupply !== undefined && { waterSupply: input.waterSupply }),
-          ...(input.notes !== undefined && { notes: input.notes }),
-        }
-      : p
-  );
+  farm.pastures = farm.pastures.map((p) => {
+    if (p.id !== pastureId) return p;
+    const newCoords = input.coordinates ?? (p.geometry?.coordinates as [number, number][][] | undefined);
+    return {
+      ...p,
+      ...(input.name !== undefined && { name: input.name }),
+      ...(input.carryingCapacity !== undefined && { carryingCapacity: input.carryingCapacity }),
+      ...(input.grassType !== undefined && { grassType: input.grassType }),
+      ...(input.waterSupply !== undefined && { waterSupply: input.waterSupply }),
+      ...(input.notes !== undefined && { notes: input.notes }),
+      ...(input.coordinates !== undefined && {
+        geometry: { type: 'Polygon' as const, coordinates: input.coordinates },
+        areaHectares: polygonAreaHectares(input.coordinates),
+      }),
+      ...(newCoords === undefined && {}),
+    };
+  });
 
   saveStoredFarm(farm);
   return farm;
@@ -500,7 +515,87 @@ export function buildStoredFarm(input: FarmInput): StoredFarm {
     movements: [],
     healthRecords: [],
     weightRecords: [],
+    employees:    [],
+    fuelLogs:     [],
+    expenses:     [],
+    machinery:    [],
     createdAt: now,
     updatedAt: now,
   };
+}
+
+// ─── ERP mutations (Phase I) ──────────────────────────────────────────────────
+
+function nanoid(): string {
+  return Math.random().toString(36).slice(2, 10);
+}
+
+export function addEmployee(input: AddEmployeeInput): Employee | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+  const emp: Employee = {
+    id:             nanoid(),
+    farmId:         farm.id,
+    name:           input.name,
+    role:           input.role ?? null,
+    idNumber:       input.idNumber ?? null,
+    hireDate:       input.hireDate ?? null,
+    salaryMonthly:  input.salaryMonthly ?? null,
+    phone:          input.phone ?? null,
+    active:         true,
+    notes:          input.notes ?? null,
+  };
+  farm.employees = [...(farm.employees ?? []), emp];
+  saveStoredFarm(farm);
+  return emp;
+}
+
+export function addFuelLog(input: AddFuelLogInput): FuelLog | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+  const log: FuelLog = {
+    id:               nanoid(),
+    farmId:           farm.id,
+    date:             input.date,
+    liters:           input.liters,
+    costPerLiter:     input.costPerLiter ?? null,
+    totalCost:        input.costPerLiter != null ? input.liters * input.costPerLiter : null,
+    vehicleEquipment: input.vehicleEquipment ?? null,
+    purpose:          input.purpose ?? null,
+    odometerKm:       input.odometerKm ?? null,
+    notes:            input.notes ?? null,
+  };
+  farm.fuelLogs = [...(farm.fuelLogs ?? []), log];
+  saveStoredFarm(farm);
+  return log;
+}
+
+export function addExpense(input: AddExpenseInput): Expense | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+  const exp: Expense = {
+    id:                 nanoid(),
+    farmId:             farm.id,
+    date:               input.date,
+    category:           input.category,
+    description:        input.description,
+    amount:             input.amount,
+    supplier:           input.supplier ?? null,
+    appliedToHerdId:    input.appliedToHerdId ?? null,
+    appliedToPastureId: input.appliedToPastureId ?? null,
+    receiptUrl:         null,
+    notes:              input.notes ?? null,
+  };
+  farm.expenses = [...(farm.expenses ?? []), exp];
+  saveStoredFarm(farm);
+  return exp;
+}
+
+export function addMachine(input: Omit<Machine, 'id' | 'farmId'>): Machine | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+  const m: Machine = { id: nanoid(), farmId: farm.id, ...input };
+  farm.machinery = [...(farm.machinery ?? []), m];
+  saveStoredFarm(farm);
+  return m;
 }

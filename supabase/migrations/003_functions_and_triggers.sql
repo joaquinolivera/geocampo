@@ -182,3 +182,41 @@ as $$
   where prev_kg is not null
   limit 1
 $$;
+
+-- ─── Phase J: pgvector similarity search ─────────────────────────────────────
+
+create or replace function match_farm_embeddings(
+  p_farm_id         uuid,
+  p_query_embedding vector(1536),
+  p_match_count     int  default 6,
+  p_match_threshold float default 0.6
+)
+returns table (
+  id         uuid,
+  type       text,
+  ref_id     uuid,
+  content    text,
+  metadata   jsonb,
+  similarity float
+)
+language plpgsql security definer
+as $$
+begin
+  return query
+  select
+    e.id,
+    e.type,
+    e.ref_id,
+    e.content,
+    e.metadata,
+    1 - (e.embedding <=> p_query_embedding) as similarity
+  from farm_embeddings e
+  where
+    e.farm_id = p_farm_id
+    and 1 - (e.embedding <=> p_query_embedding) > p_match_threshold
+  order by e.embedding <=> p_query_embedding
+  limit p_match_count;
+end;
+$$;
+
+grant execute on function match_farm_embeddings to authenticated, service_role;

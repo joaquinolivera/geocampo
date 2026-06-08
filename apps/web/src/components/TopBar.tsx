@@ -10,9 +10,13 @@ import LanguageToggle from './LanguageToggle';
 
 interface TopBarProps {
   onLogout?: () => void;
+  onToggleERP?: () => void;
+  erpOpen?: boolean;
+  onToggleChat?: () => void;
+  chatOpen?: boolean;
 }
 
-export default function TopBar({ onLogout }: TopBarProps) {
+export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, chatOpen }: TopBarProps) {
   const router = useRouter();
   const { t } = useT();
   const { DEMO_FARM, HERDS, PASTURES, HEALTH_RECORDS } = useFarmData();
@@ -110,6 +114,44 @@ export default function TopBar({ onLogout }: TopBarProps) {
               <span className="text-lime text-sm">✅</span>
               <p className="text-lime text-xs font-medium">{t('topbar.allGood')}</p>
             </div>
+          </>
+        )}
+
+        {/* ERP toggle */}
+        {onToggleERP && (
+          <>
+            <Divider />
+            <button
+              onClick={onToggleERP}
+              className="text-xs px-2 py-1 rounded-lg border transition-colors"
+              style={{
+                borderColor: erpOpen ? '#DEFF9A' : '#2A2A2B',
+                color: erpOpen ? '#DEFF9A' : '#6A6A6B',
+                backgroundColor: erpOpen ? '#DEFF9A15' : 'transparent',
+              }}
+              title="Panel ERP"
+            >
+              🏢 ERP
+            </button>
+          </>
+        )}
+
+        {/* AI Chat toggle */}
+        {onToggleChat && (
+          <>
+            <Divider />
+            <button
+              onClick={onToggleChat}
+              className="text-xs px-2 py-1 rounded-lg border transition-colors"
+              style={{
+                borderColor: chatOpen ? '#DEFF9A' : '#2A2A2B',
+                color: chatOpen ? '#DEFF9A' : '#6A6A6B',
+                backgroundColor: chatOpen ? '#DEFF9A15' : 'transparent',
+              }}
+              title="Asistente IA"
+            >
+              🤖 IA
+            </button>
           </>
         )}
 
