@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
-import 'mapbox-gl/dist/mapbox-gl.css';
+// mapbox-gl CSS is imported inside FarmMap.tsx (client component) to avoid
+// SSR crashes when NEXT_PUBLIC_MAPBOX_TOKEN is not set.
 import { LanguageProvider } from '@/lib/i18n';
 
 export const metadata: Metadata = {

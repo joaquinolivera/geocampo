@@ -14,6 +14,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, {
   Source,
   Layer,

@@ -5,114 +5,227 @@ Each phase is TDD-first: tests written before implementation, committed after al
 
 ---
 
-## Phase A — Data entry from the dashboard
+## Architecture Overview
 
-- [x] **A1** `addWeightRecord()` store function + 6 unit tests
-- [x] **A1** `WeightEntryModal` component + 9 component tests
-- [x] **A1** "Registrar pesaje" button wired in `ParcelDetailPanel`
-- [x] **A1** `FarmDataContext.refresh()` — re-reads localStorage after any mutation
-- [x] **A2** `addHealthRecord()` — log vaccination / deworming / checkup from the dashboard
-      - Form: date, treatmentType, productName, dosage, administeredBy, nextDueDate, notes
-      - Clears the health alert once recorded
-      - Same TDD pattern: store fn → component → wire button
-- [x] **A3** `moveHerd()` — move a herd from one pasture to another
-      - Form: select destination pasture, movement date, notes
-      - Updates `herd.pastureId` + `herd.entryDate`, appends to `movements[]`
-      - Resets days-in-pasture counter
+GeoCampo is a **multi-tenant SaaS** with three products sharing one backend:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  geocampo.com  (Landing — Next.js, separate app)                │
+│  Marketing · Pricing · Signup · Payments (Stripe) · Blog        │
+│  → redirects logged-in users to app.geocampo.com               │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────────┐
+│  app.geocampo.com  (Web App — this codebase, apps/web)          │
+│  Full dashboard · Map · Pastures · Herds · Reports · ERP        │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────────┐
+│  GeoCampo Mobile  (Expo, apps/mobile)                           │
+│  Offline-first · Field data entry · Background sync             │
+└──────────────────────┬──────────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────────────┐
+│  Supabase Backend                                               │
+│  PostgreSQL + RLS (tenant isolation per farm_id)                │
+│  pgvector (RAG / AI embeddings)                                 │
+│  Supabase Auth · Edge Functions · Realtime · Storage            │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+**Multi-tenancy pattern:** Row-Level Security on every table.
+Every row carries a `farm_id`. Supabase RLS policies enforce that
+users only see rows where `farm_id = auth.jwt() → farm_id`.
+
+**Roles per farm:** owner · manager · vet · employee · viewer
 
 ---
 
-## Phase B — Edit / add pastures from the dashboard
+## Phase A — Data entry from the dashboard ✅ COMPLETE
 
-- [x] **B1** "Agregar potrero" button on the dashboard map (floating "+" button)
-      - Click "+" → drawing mode (crosshair cursor, click-to-place vertices, dashed preview)
-      - ≥3 points → "Finalizar potrero" → `PastureFormModal` (name, capacity, grassType, waterSupply, notes)
-      - `addPasture()` with 9 unit tests (TDD) — area auto-calculated from drawn polygon
-      - `refresh()` called → new pasture instantly visible on map and in sidebar
-- [ ] **B2** "Editar potrero" in `ParcelDetailPanel`
-      - Edit polygon shape (redraw), grass type, water supply, carrying capacity, notes
-      - Updates existing pasture via `updatePasture()`
-- [ ] **B3** "Eliminar potrero" (with confirmation) via `removePasture()`
+- [x] A1 `addWeightRecord()` + WeightEntryModal + wire button
+- [x] A2 `addHealthRecord()` + HealthEntryModal + wire button
+- [x] A3 `moveHerd()` + MoveHerdModal + wire button
+- [x] Bug fixes: health history visibility, movement history bidirectional,
+      species field on herds
+
+---
+
+## Phase B — Edit / add pastures from the dashboard ✅ COMPLETE
+
+- [x] B1 "Agregar potrero" — drawing mode on map + PastureFormModal + addPasture() TDD
+- [x] B2 EditPastureModal — edit name, capacity, grassType, waterSupply, notes
+      (polygon shape redraw deferred to B2b below)
+- [x] B3 "Eliminar potrero" — two-step inline confirmation, blocks if has_herd
+
+- [ ] **B2b** Polygon redraw — let user redraw the polygon of an existing pasture
+      (same drawing mode as B1 but pre-selects the existing pasture and replaces coordinates)
 
 ---
 
 ## Phase C — Mobile app parity (Expo)
 
-- [ ] **C1** Wire weight entry into the mobile Herds screen
-      - Same `addWeightRecord()` from `packages/shared` or direct localStorage
-- [ ] **C2** Wire health record entry into mobile Health screen
-- [ ] **C3** Move herd from mobile Map screen
-- [ ] **C4** Add/edit pastures from mobile Map screen
+- [ ] **C1** Wire weight entry — `addWeightRecord()` from shared store, same form as web
+- [ ] **C2** Wire health record entry — `addHealthRecord()` from shared store
+- [ ] **C3** Move herd from mobile Map screen — `moveHerd()` + destination picker
+- [ ] **C4** Add/edit pastures from mobile Map screen — drawing mode equivalent
+- [ ] **C5** Offline queue — store mutations in SQLite when offline, replay on reconnect
+      - Use Expo SQLite + a `pending_mutations[]` queue
+      - On reconnect: flush queue to Supabase in order, resolve conflicts (last-write-wins)
+- [ ] **C6** Sync indicator — banner/icon showing "offline · X changes pending"
+- [ ] **C7** Push notifications — Expo Push for rotation alerts, overdue vaccines, weight targets
 
 ---
 
-## Phase D — Supabase backend
+## Phase D — Supabase backend (multi-tenant)
 
-- [ ] **D1** Supabase schema migration (already drafted in `supabase/schema.sql`)
-- [ ] **D2** Replace `localStorage` reads/writes with Supabase queries behind a feature flag
-      - `IS_DEMO_MODE` already detected — flip to Supabase when env vars are real
-- [ ] **D3** Real-time sync — subscribe to farm changes across devices
-- [ ] **D4** Multi-user / invites — share farm with a vet, employee, or partner
+- [ ] **D1** Schema design
+      - Every table has `farm_id uuid references farms(id)` + RLS policy
+      - Tables: `farms`, `farm_members` (role per user), `pastures`, `herds`,
+        `weight_records`, `health_records`, `movements`, `cattle` (Phase G),
+        `employees`, `expenses`, `fuel_logs`, `machinery` (Phase ERP)
+      - Audit log table: `audit_events (farm_id, table_name, row_id, action, changed_by, changed_at, diff jsonb)`
+- [ ] **D2** Supabase Auth + multi-tenant session
+      - JWT custom claim: `farm_id` + `role` injected at login
+      - Invitation flow: owner invites employees by email → role assignment
+- [ ] **D3** Replace localStorage reads/writes with Supabase queries
+      - Feature flag: `IS_DEMO_MODE` → localStorage; real credentials → Supabase
+      - Keep localStorage as offline cache (read-through, write-behind)
+- [ ] **D4** Real-time sync — `supabase.channel()` subscriptions for collaborative edits
+- [ ] **D5** Role-based access control (RBAC)
+      - owner: full access
+      - manager: all except billing and user management
+      - vet: health records + cattle view only
+      - employee: weight + movement entry only
+      - viewer: read-only
 
 ---
 
 ## Phase E — Reporting & export
 
-- [ ] **E1** Weight gain chart — plot ADG over time per herd (recharts or Chart.js)
-- [ ] **E2** Stocking history — chart of heads per pasture over the year
-- [ ] **E3** PDF export of a farm summary (pastures, herds, recent weights, health)
-- [ ] **E4** CSV export of weight records
+- [ ] **E1** Weight gain chart — ADG over time per herd (recharts)
+- [ ] **E2** Stocking history — heads per pasture over the year (area chart)
+- [ ] **E3** PDF export — farm summary (pastures, herds, weights, health, financials)
+- [ ] **E4** CSV export — weight records, health records, movement history
+- [ ] **E5** Weekly email digest — farm summary sent every Monday via Resend
+      - Configurable per farm: on/off, recipients, language
 
 ---
 
-## Phase F — UX improvements (no regressions to existing UI)
+## Phase F — UX improvements
 
-- [ ] **F1** Onboarding — first-time empty state on the dashboard with "Configurar mi campo" CTA
-- [ ] **F2** Dark-mode time picker improvement on mobile Safari
-- [ ] **F3** Keyboard navigation / accessibility audit (WCAG 2.1 AA)
-- [ ] **F4** Offline indicator — banner when user is offline (relevant for field use)
+- [ ] **F1** Onboarding — empty state on dashboard with "Configurar mi campo" CTA
+- [ ] **F2** Dark-mode time picker fix on mobile Safari
+- [ ] **F3** Accessibility audit (WCAG 2.1 AA) — keyboard nav, ARIA roles, contrast
+- [ ] **F4** Offline indicator — banner when offline (web service worker)
+- [ ] **F5** i18n: add Portuguese (pt-BR) — largest regional cattle market
 
 ---
 
 ## Phase G — Individual cattle tracking (DIOB / SENACSA chip)
 
-Paraguay Law 7221/2023 + SENACSA Resolution 2103/2024 mandate a DIOB (Dispositivo Individual
-Oficial Bovino) per animal for "Carimbo 5" cattle destined for export or slaughter.
+Paraguay Law 7221/2023 + SENACSA Resolution 2103/2024 mandate a DIOB chip per animal.
 
-**DIOB spec:**
-- Left ear: ISO 11784/11785 FDX-B microchip, 134.2 kHz — readable with standard RFID readers
-- Right ear: Visual tag (printed ID number)
-- Managed through the SINIP system (Sistema Nacional de Identificación y Productividad)
+**DIOB spec:** ISO 11784/11785 FDX-B microchip (134.2 kHz) · left ear
+Managed through SINIP (Sistema Nacional de Identificación y Productividad)
 
-**Features to implement:**
-- [ ] **G1** `Cattle` entity — individual animal within a herd (chip ID, visual tag, sex, breed, DOB)
-      - Schema: `id`, `herdId`, `chipId` (EID/ISO), `visualTagId`, `sex`, `breed`, `dob`, `status`
-      - `StoredFarm.cattle[]` array; Supabase table `cattle`
+- [ ] **G1** `Cattle` entity — individual animal within a herd
+      Schema: `id`, `herdId`, `chipId` (EID/ISO), `visualTagId`, `sex`, `breed`, `dob`, `status`
 - [ ] **G2** Chip scan entry — manual entry or QR/RFID reader input (mobile)
-- [ ] **G3** Weight records linked to individual animal (`cattleId`) not just herd
-- [ ] **G4** Health records linked to individual animal
-- [ ] **G5** SINIP export — generate compliant CSV/XML report for SENACSA submission
-- [ ] **G6** Trazabilidad timeline per animal — full lifecycle history
+- [ ] **G3** Weight records per individual animal (`cattleId`) in addition to herd-level
+- [ ] **G4** Health records per individual animal
+- [ ] **G5** SINIP export — compliant CSV/XML for SENACSA submission
+- [ ] **G6** Trazabilidad timeline per animal — full lifecycle history on web + mobile
 
 ---
 
-## Discovered during development (add here, don't forget)
+## Phase H — Landing page (geocampo.com)
+
+Separate Next.js app (`apps/landing`) targeting CEOs, farm owners, investors.
+
+- [ ] **H1** Scaffold `apps/landing` — Next.js + Tailwind, separate deployment
+- [ ] **H2** Hero section — value proposition, satellite map animation, CTA
+- [ ] **H3** Features section — pasture management, herd tracking, ERP, AI assistant
+- [ ] **H4** Pricing page — Free / Pro / Enterprise tiers
+      - Free: 1 farm, 3 pastures, 1 user, no exports
+      - Pro: unlimited pastures, up to 5 users, PDF/CSV export, AI assistant
+      - Enterprise: unlimited users, custom domain, SINIP export, dedicated support
+- [ ] **H5** Signup flow — create account → create first farm → redirect to app
+- [ ] **H6** Payment integration (Stripe)
+      - Subscription management, billing portal, invoices
+      - Webhook handler for subscription lifecycle events
+- [ ] **H7** Blog / resources — SEO content for "gestión ganadera", "SENACSA", "DIOB"
+- [ ] **H8** Login → redirect to app.geocampo.com (if session exists, skip login)
+
+---
+
+## Phase I — ERP (Establishment Management)
+
+Full operational picture of the farm as a business.
+
+- [ ] **I1** Employee management
+      - Add/edit employees: name, role, CUIL/cédula, hire date, salary, contact
+      - Daily attendance log
+      - Task assignment (who worked which potrero, which day)
+- [ ] **I2** Fuel tracking
+      - Log fuel fill-ups: date, liters, cost, vehicle/equipment, purpose
+      - Dashboard: fuel cost per month, per hectare, per animal
+      - Waste detection: flag unusual consumption vs. historical average
+- [ ] **I3** Veterinary & input expenses
+      - Log: date, product, quantity, unit cost, supplier, applied to (herd/individual)
+      - Auto-links to health records when a treatment is logged
+      - Cost per animal, cost per herd, cost per pasture
+- [ ] **I4** Machinery & equipment registry
+      - Assets: tractor, plow, hay baler, water pump, horses, ATVs
+      - Maintenance log per machine: service date, cost, next service due
+      - Depreciation tracker
+- [ ] **I5** Cost per animal dashboard
+      - Rolling cost per head: feed, vet, labor, fuel, infrastructure ÷ animal count
+      - Break-even calculator: what price/kg needed to cover costs
+- [ ] **I6** Income tracking
+      - Log sales: date, herd/animals sold, weight, price/kg, buyer
+      - Connects to movement records (sale = movement out of farm)
+- [ ] **I7** P&L summary — monthly/annual profit & loss per farm
+- [ ] **I8** Infrastructure management
+      - Log maintenance: fence repair, water system, corrals, buildings
+      - Asset value tracking
+
+---
+
+## Phase J — AI Assistant (RAG on farm data)
+
+Uses Supabase pgvector to embed all farm events (weights, health, movements,
+expenses) and answer natural-language questions about the farm.
+
+- [ ] **J1** Embedding pipeline — on every write to Supabase, embed the event into pgvector
+      - Edge Function triggered by database webhook
+      - Embed: weight records, health records, movements, expenses
+- [ ] **J2** Query interface — chat widget in the web app sidebar
+      - User types: "¿Cuánto mejoró el lote Laguna en los últimos 3 meses?"
+      - RAG retrieves relevant embeddings → passes to Claude API → returns answer
+- [ ] **J3** Canned reports with AI narrative
+      - "Generar informe mensual" → AI summarizes the month in prose + tables
+      - "Estado sanitario del campo" → AI reads all health records and flags risks
+- [ ] **J4** Proactive alerts
+      - AI notices: ADG dropped 30% in Lote Norte → suggests causes (overstocking, parasite load)
+      - Flags: no weighing in 45 days for a herd → reminds owner
+- [ ] **J5** Knowledge base — embed FAQs, SENACSA regulations, breed guides
+      - Lets AI answer "¿Cuándo debo vacunar contra aftosa?" with regulatory context
+
+---
+
+## Discovered during development
 
 - [ ] Demo mode: "Registrar pesaje" button hidden because `isCustomFarm = false` —
-      consider showing it with a "Try in demo mode" affordance that pre-fills sample data
-- [ ] `weighedBy` field defaults to "Usuario" — should default to the logged-in user's name
-      once Supabase auth is wired (Phase D)
-- [ ] Health records: `upcomingHealth` filter was too narrow (excluded records without `nextDueDate`);
-      fixed in Phase A bug-fix pass — now shows full history + separate alerts strip
-- [ ] `addPasture()` colors cycle through `PASTURE_COLORS[]` — if farm has >7 pastures,
-      colors repeat; consider deriving from hue rotation or letting user pick in `PastureFormModal`
+      consider showing it with a "Try in demo mode" affordance
+- [ ] `weighedBy` defaults to "Usuario" — should default to logged-in user's name (Phase D)
+- [ ] `addPasture()` colors cycle through 7 — consider hue rotation for >7 pastures
+- [ ] `addHerd()` and `addPasture()` don't validate for duplicate names
+- [ ] Movement history: old records without `fromPastureId`/`toPastureId` fall back to
+      name-based matching (backward compatible)
 
 ---
 
-- [ ] Movement history: `fromPastureId`/`toPastureId` added to `Movement` interface — old records
-      without these fields fall back to name-based matching (backward compatible)
-- [ ] `addHerd()` and `addPasture()` don't validate for duplicate names — could add a check later
-
----
-
-_Last updated: 2026-06-08 — Phase A (38 tests) + B1 (9 tests) + addHerd (10 tests) complete; Bug fixes: health history, movement history in both pastures, species field on herds_
+_Last updated: 2026-06-08 — Architecture expanded: multi-tenant SaaS, ERP (Phase I),
+AI assistant (Phase J), landing page (Phase H). Phase A + B complete (38 + 18 tests)._
