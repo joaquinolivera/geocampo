@@ -100,7 +100,7 @@ describe('buildLoadAlert', () => {
 describe('getActiveAlerts', () => {
   it('filters out ok alerts', () => {
     const alerts = [
-      buildLoadAlert('p-1', 'Norte', 40, 50)!, // ok (80%)
+      buildLoadAlert('p-1', 'Norte', 35, 50)!, // ok (70%)
       buildLoadAlert('p-2', 'Sur', 45, 50)!,   // warning (90%)
       buildLoadAlert('p-3', 'Este', 55, 50)!,  // critical (110%)
     ];
