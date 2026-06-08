@@ -89,25 +89,45 @@ async function supabaseMiddleware(request: NextRequest): Promise<NextResponse> {
 
   if (isPublic(pathname)) return response;
 
-  if (!user) {
+  // Accept either a real Supabase session OR the local demo cookie (setup wizard users)
+  const demoCookie = request.cookies.get(SESSION_COOKIE);
+  const hasLocalSession = !!demoCookie?.value;
+
+  if (!user && !hasLocalSession) {
     const loginUrl = request.nextUrl.clone();
     loginUrl.pathname = '/login';
     loginUrl.searchParams.set('next', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Root / → look up user's farm and redirect to slug
+  // Root / → redirect to farm slug
   if (pathname === '/') {
-    const { data: farm } = await supabase
-      .from('farms')
-      .select('slug')
-      .eq('owner_id', user.id)
-      .single();
+    if (user) {
+      // Supabase user: look up their farm
+      const { data: farm } = await supabase
+        .from('farms')
+        .select('slug')
+        .eq('owner_id', user.id)
+        .single();
 
-    const slug = farm?.slug ?? 'mi-campo';
-    const farmUrl = request.nextUrl.clone();
-    farmUrl.pathname = `/${slug}`;
-    return NextResponse.redirect(farmUrl);
+      const slug = farm?.slug ?? 'mi-campo';
+      const farmUrl = request.nextUrl.clone();
+      farmUrl.pathname = `/${slug}`;
+      return NextResponse.redirect(farmUrl);
+    }
+
+    // Local demo cookie user: use farmSlug from cookie
+    try {
+      const data = JSON.parse(decodeURIComponent(demoCookie!.value));
+      const slug = data.farmSlug ?? 'estancia-las-pampas';
+      const farmUrl = request.nextUrl.clone();
+      farmUrl.pathname = `/${slug}`;
+      return NextResponse.redirect(farmUrl);
+    } catch {
+      const loginUrl = request.nextUrl.clone();
+      loginUrl.pathname = '/login';
+      return NextResponse.redirect(loginUrl);
+    }
   }
 
   return response;

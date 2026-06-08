@@ -14,21 +14,24 @@ function LoginForm() {
   const nextPath = params.get('next');
   const { t } = useT();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [success, setSuccess]   = useState<string | null>(null);
+  const [error, setError]       = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccess(null);
 
     if (!email.trim() || !password.trim()) {
       setError(t('auth.errEmpty'));
       return;
     }
 
-    startTransition(async () => {
+    startTransition(() => { void (async () => {
       if (IS_DEMO_MODE) {
         setDemoSession(email.trim());
         router.push(nextPath ?? `/${DEMO_FARM_SLUG}`);
@@ -41,19 +44,38 @@ function LoginForm() {
         return;
       }
 
+      if (isSignUp) {
+        const { error: signUpError } = await client.auth.signUp({
+          email: email.trim(),
+          password,
+        });
+        if (signUpError) {
+          setError(signUpError.message);
+          return;
+        }
+        setSuccess('¡Cuenta creada! Revisá tu email para confirmar y luego iniciá sesión.');
+        setIsSignUp(false);
+        return;
+      }
+
       const { error: authError } = await client.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
       if (authError) {
-        setError(t('auth.errCredentials'));
+        const msg = authError.message.toLowerCase();
+        if (msg.includes('invalid') || msg.includes('credentials') || msg.includes('wrong') || msg.includes('email not confirmed')) {
+          setError('Email o contraseña incorrectos. ¿No tenés cuenta aún? Usá "Crear cuenta" abajo.');
+        } else {
+          setError(authError.message);
+        }
         return;
       }
 
       router.push(nextPath ?? '/');
       router.refresh();
-    });
+    })(); });
   };
 
   return (
@@ -74,7 +96,9 @@ function LoginForm() {
             🌿
           </div>
           <h1 className="text-white text-2xl font-bold tracking-tight">{t('auth.title')}</h1>
-          <p className="text-muted text-sm mt-1">{t('auth.tagline')}</p>
+          <p className="text-muted text-sm mt-1">
+            {isSignUp ? 'Creá tu cuenta para empezar' : t('auth.tagline')}
+          </p>
         </div>
 
         {/* Demo notice */}
@@ -82,6 +106,41 @@ function LoginForm() {
           <div className="mb-6 rounded-xl border border-lime/20 bg-lime/5 px-4 py-3">
             <p className="text-lime text-xs font-semibold mb-0.5">{t('auth.demoTitle')}</p>
             <p className="text-muted text-xs">{t('auth.demoBody')}</p>
+          </div>
+        )}
+
+        {/* Sign-up / login toggle */}
+        {!IS_DEMO_MODE && (
+          <div className="flex mb-6 rounded-xl border border-surface2 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => { setIsSignUp(false); setError(null); setSuccess(null); }}
+              className="flex-1 py-2 text-sm font-semibold transition-all"
+              style={{
+                backgroundColor: !isSignUp ? '#DEFF9A' : 'transparent',
+                color: !isSignUp ? '#0A0A0B' : '#888',
+              }}
+            >
+              Iniciar sesión
+            </button>
+            <button
+              type="button"
+              onClick={() => { setIsSignUp(true); setError(null); setSuccess(null); }}
+              className="flex-1 py-2 text-sm font-semibold transition-all"
+              style={{
+                backgroundColor: isSignUp ? '#DEFF9A' : 'transparent',
+                color: isSignUp ? '#0A0A0B' : '#888',
+              }}
+            >
+              Crear cuenta
+            </button>
+          </div>
+        )}
+
+        {/* Success message */}
+        {success && (
+          <div className="mb-4 rounded-xl border border-lime/30 bg-lime/10 px-4 py-3">
+            <p className="text-lime text-sm">{success}</p>
           </div>
         )}
 
@@ -105,13 +164,14 @@ function LoginForm() {
           <div>
             <label className="block text-white text-sm font-medium mb-2">
               {t('auth.password')}
+              {isSignUp && <span className="text-muted text-xs font-normal ml-2">(mín. 6 caracteres)</span>}
             </label>
             <input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder={t('auth.passwordPlaceholder')}
-              autoComplete="current-password"
+              autoComplete={isSignUp ? 'new-password' : 'current-password'}
               disabled={isPending}
               className="w-full rounded-xl border border-surface2 bg-surface px-4 py-3 text-white placeholder-muted text-sm focus:outline-none focus:border-lime/50 focus:ring-1 focus:ring-lime/30 disabled:opacity-50 transition-colors"
             />
@@ -133,10 +193,10 @@ function LoginForm() {
             {isPending ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="w-4 h-4 border-2 border-charcoal border-t-transparent rounded-full animate-spin" />
-                {t('auth.loggingIn')}
+                {isSignUp ? 'Creando cuenta…' : t('auth.loggingIn')}
               </span>
             ) : (
-              t('auth.loginBtn')
+              isSignUp ? 'Crear cuenta' : t('auth.loginBtn')
             )}
           </button>
         </form>
