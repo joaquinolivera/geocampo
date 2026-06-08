@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "pnpm --filter mobile dev",
     "dev:web": "pnpm --filter mobile dev:web",
+    "dev:dashboard": "pnpm --filter @geocampo/web dev",
     "test": "jest && pnpm -r test",
     "test:schema": "jest tests/schema.test.ts",
     "test:watch": "jest --watch",
@@ -20,5 +21,5 @@
     "ts-jest": "^29.2.0",
     "typescript": "^5.7.0"
   },
-  "packageManager": "pnpm@9.15.0"
+  "packageManager": "pnpm@11.5.2"
 }

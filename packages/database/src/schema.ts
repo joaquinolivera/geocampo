@@ -91,6 +91,24 @@ export const appSchema = new Schema({
     },
   }),
 
+  infrastructure_features: new Table({
+    farm_id: column.text,
+    type: column.text,        // 'water' | 'fence' | 'corral' | 'building'
+    subtype: column.text,
+    name: column.text,
+    geometry: column.text,    // GeoJSON geometry as JSON string
+    condition: column.text,   // 'buena' | 'regular' | 'mala'
+    capacity: column.integer,
+    notes: column.text,
+    created_at: column.integer,
+    updated_at: column.integer,
+  }, {
+    indexes: {
+      idx_infra_farm: ['farm_id'],
+      idx_infra_type: ['type'],
+    },
+  }),
+
   movements: new Table({
     herd_id: column.text,
     from_pasture_id: column.text,

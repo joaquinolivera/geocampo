@@ -4,6 +4,7 @@
 
 export * from './geo';
 export * from './sync';
+export * from './alerts';
 
 /**
  * Convert a Date to SQLite timestamp (milliseconds since epoch)
