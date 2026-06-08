@@ -1,27 +1,53 @@
 /**
- * @fileoverview Supabase client helpers for the GeoCampo web dashboard.
+ * @fileoverview Supabase client helpers — multi-tenant SaaS edition.
  *
  * Two modes:
- *  1. Demo mode  — NEXT_PUBLIC_SUPABASE_URL not set.
- *     Auth is simulated with a signed cookie. No real DB calls.
- *  2. Production — Supabase configured. Uses @supabase/ssr for Next.js 15.
+ *  1. Demo mode  — env vars empty → localStorage, no real auth
+ *  2. Production — Supabase configured → real DB + RLS per farm_id
+ *
+ * Multi-tenancy: every user belongs to one or more farms via farm_members.
+ * The active farm is stored in sessionStorage and exposed via useFarm().
  */
 
-export const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL ?? '';
+export const SUPABASE_URL      = process.env.NEXT_PUBLIC_SUPABASE_URL      ?? '';
 export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
 
 // Treat missing OR placeholder values as demo mode
 const isPlaceholder = (s: string) =>
-  !s || s.includes('your-project') || s.includes('your_') || s.startsWith('your');
-export const IS_DEMO_MODE = isPlaceholder(SUPABASE_URL) || isPlaceholder(SUPABASE_ANON_KEY);
+  !s ||
+  s.includes('your-project') ||
+  s.includes('REPLACE') ||
+  s.startsWith('your') ||
+  s === 'https://REPLACE.supabase.co';
 
-// ─── Browser client (used in client components) ───────────────────────────────
+export const IS_DEMO_MODE =
+  isPlaceholder(SUPABASE_URL) || isPlaceholder(SUPABASE_ANON_KEY);
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+export type FarmRole = 'owner' | 'manager' | 'vet' | 'employee' | 'viewer';
+
+export interface FarmMembership {
+  farmId:   string;
+  farmName: string;
+  farmSlug: string;
+  role:     FarmRole;
+}
+
+export interface UserSession {
+  userId:       string;
+  email:        string;
+  displayName:  string;
+  memberships:  FarmMembership[];
+  activeFarmId: string | null;
+}
+
+// ─── Browser client (singleton) ───────────────────────────────────────────────
 
 let _browserClient: ReturnType<typeof _createBrowserClient> | null = null;
 
 function _createBrowserClient() {
-  // Dynamic import so the module doesn't break in demo mode where the package
-  // might not yet be installed.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { createBrowserClient } = require('@supabase/ssr');
   return createBrowserClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
@@ -32,19 +58,99 @@ export function getBrowserClient() {
   return _browserClient;
 }
 
-// ─── Demo auth helpers ────────────────────────────────────────────────────────
-// Used when NEXT_PUBLIC_SUPABASE_URL is not configured.
+// ─── Server client (used in Server Components / Route Handlers) ───────────────
 
-export const DEMO_FARM_SLUG = 'estancia-las-pampas';
+export async function getServerClient() {
+  if (IS_DEMO_MODE) return null;
+  const { createServerClient } = await import('@supabase/ssr');
+  const { cookies } = await import('next/headers');
+  const cookieStore = await cookies();
+  return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    cookies: {
+      getAll:    () => cookieStore.getAll(),
+      setAll: (pairs: Array<{ name: string; value: string; options?: Record<string, unknown> }>) => {
+        try {
+          pairs.forEach(({ name, value, options }) =>
+            cookieStore.set(name, value, options as Parameters<typeof cookieStore.set>[2])
+          );
+        } catch {
+          // read-only context (Server Component) — ignore
+        }
+      },
+    },
+  });
+}
+
+// ─── User session helpers ─────────────────────────────────────────────────────
+
+/**
+ * Fetch the current user's memberships from Supabase.
+ * Returns null in demo mode.
+ */
+export async function getUserSession(): Promise<UserSession | null> {
+  const client = getBrowserClient();
+  if (!client) return null;
+
+  const { data: { user }, error } = await client.auth.getUser();
+  if (error || !user) return null;
+
+  const { data: memberships } = await client
+    .from('farm_members')
+    .select('farm_id, role, farms(id, slug, name)')
+    .eq('user_id', user.id);
+
+  const mapped: FarmMembership[] = (memberships ?? []).map((m: {
+    farm_id: string;
+    role: FarmRole;
+    farms: { id: string; slug: string; name: string } | null;
+  }) => ({
+    farmId:   m.farm_id,
+    farmName: m.farms?.name ?? '',
+    farmSlug: m.farms?.slug ?? '',
+    role:     m.role,
+  }));
+
+  const stored = typeof sessionStorage !== 'undefined'
+    ? sessionStorage.getItem('geocampo_active_farm')
+    : null;
+
+  const activeFarmId = stored && mapped.some(m => m.farmId === stored)
+    ? stored
+    : mapped[0]?.farmId ?? null;
+
+  return {
+    userId:       user.id,
+    email:        user.email ?? '',
+    displayName:  user.user_metadata?.full_name ?? user.email?.split('@')[0] ?? 'Usuario',
+    memberships:  mapped,
+    activeFarmId,
+  };
+}
+
+/** Switch the active farm (persisted in sessionStorage) */
+export function setActiveFarm(farmId: string) {
+  if (typeof sessionStorage !== 'undefined') {
+    sessionStorage.setItem('geocampo_active_farm', farmId);
+  }
+}
+
+/** Get the active farm_id from sessionStorage */
+export function getActiveFarmId(): string | null {
+  if (typeof sessionStorage === 'undefined') return null;
+  return sessionStorage.getItem('geocampo_active_farm');
+}
+
+// ─── Demo auth helpers (unchanged) ───────────────────────────────────────────
+
+export const DEMO_FARM_SLUG    = 'estancia-las-pampas';
 export const DEMO_SESSION_COOKIE = 'geocampo_session';
 
 export interface DemoSession {
-  email: string;
-  farmSlug: string;
-  name: string;
+  email:     string;
+  farmSlug:  string;
+  name:      string;
 }
 
-/** Check demo cookie in browser context */
 export function getDemoSession(): DemoSession | null {
   if (typeof document === 'undefined') return null;
   const raw = document.cookie
@@ -62,14 +168,37 @@ export function setDemoSession(email: string) {
   const session: DemoSession = {
     email,
     farmSlug: DEMO_FARM_SLUG,
-    name: email.split('@')[0],
+    name:     email.split('@')[0],
   };
-  const encoded = encodeURIComponent(JSON.stringify(session));
-  // 7-day expiry
-  const expires = new Date(Date.now() + 7 * 86_400_000).toUTCString();
+  const encoded  = encodeURIComponent(JSON.stringify(session));
+  const expires  = new Date(Date.now() + 7 * 86_400_000).toUTCString();
   document.cookie = `${DEMO_SESSION_COOKIE}=${encoded}; path=/; expires=${expires}; SameSite=Lax`;
 }
 
 export function clearDemoSession() {
   document.cookie = `${DEMO_SESSION_COOKIE}=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT`;
+}
+
+// ─── Auth actions ─────────────────────────────────────────────────────────────
+
+export async function signUp(email: string, password: string, farmName?: string) {
+  const client = getBrowserClient();
+  if (!client) throw new Error('Demo mode — signup not available');
+  return client.auth.signUp({
+    email,
+    password,
+    options: { data: { farm_name: farmName } },
+  });
+}
+
+export async function signIn(email: string, password: string) {
+  const client = getBrowserClient();
+  if (!client) throw new Error('Demo mode — use any email/password');
+  return client.auth.signInWithPassword({ email, password });
+}
+
+export async function signOut() {
+  const client = getBrowserClient();
+  if (!client) { clearDemoSession(); return; }
+  await client.auth.signOut();
 }

@@ -30,6 +30,9 @@ import { buildLoadAlert, loadStatusColor, calculateCapacityPercent } from '@/lib
 import type { SelectionState } from '@/lib/selection';
 import { useT } from '@/lib/i18n';
 
+// Mapbox GL CSS — imported here (client component) so it never runs on the server
+import 'mapbox-gl/dist/mapbox-gl.css';
+
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
 
