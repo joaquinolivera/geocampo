@@ -146,6 +146,77 @@ export function polygonAreaHectares(coords: [number, number][][]): number {
   return areaSqM / 10_000; // m² → hectares
 }
 
+// ─── Update pasture mutation ──────────────────────────────────────────────────
+
+export interface UpdatePastureInput {
+  name?: string;
+  carryingCapacity?: number;
+  grassType?: GrassType;
+  waterSupply?: WaterSupplyType;
+  notes?: string;
+}
+
+/**
+ * Partially update a pasture's metadata (name, capacity, grass type, etc.).
+ * Does NOT update geometry/area — use addPasture for that.
+ * Returns the updated StoredFarm, or null if farm/pasture not found.
+ */
+export function updatePasture(
+  pastureId: string,
+  input: UpdatePastureInput,
+): StoredFarm | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+
+  const idx = farm.pastures.findIndex((p) => p.id === pastureId);
+  if (idx === -1) return null;
+
+  farm.pastures = farm.pastures.map((p) =>
+    p.id === pastureId
+      ? {
+          ...p,
+          ...(input.name !== undefined && { name: input.name }),
+          ...(input.carryingCapacity !== undefined && { carryingCapacity: input.carryingCapacity }),
+          ...(input.grassType !== undefined && { grassType: input.grassType }),
+          ...(input.waterSupply !== undefined && { waterSupply: input.waterSupply }),
+          ...(input.notes !== undefined && { notes: input.notes }),
+        }
+      : p
+  );
+
+  saveStoredFarm(farm);
+  return farm;
+}
+
+// ─── Remove pasture mutation ──────────────────────────────────────────────────
+
+export type RemovePastureResult =
+  | { farm: StoredFarm }
+  | { error: 'has_herd' }
+  | null;
+
+/**
+ * Remove a pasture from the farm.
+ * Returns { error: 'has_herd' } if a herd is currently assigned to it.
+ * Returns null if farm or pasture not found.
+ * Returns { farm } on success.
+ */
+export function removePasture(pastureId: string): RemovePastureResult {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+
+  const pasture = farm.pastures.find((p) => p.id === pastureId);
+  if (!pasture) return null;
+
+  const hasHerd = farm.herds.some((h) => h.pastureId === pastureId);
+  if (hasHerd) return { error: 'has_herd' };
+
+  farm.pastures = farm.pastures.filter((p) => p.id !== pastureId);
+  farm.totalAreaHectares = farm.pastures.reduce((s, p) => s + p.areaHectares, 0);
+  saveStoredFarm(farm);
+  return { farm };
+}
+
 // ─── Weight record mutation ───────────────────────────────────────────────────
 
 export interface WeightEntryInput {

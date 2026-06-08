@@ -6,6 +6,8 @@ import WeightEntryModal from '@/components/WeightEntryModal';
 import HealthEntryModal from '@/components/HealthEntryModal';
 import MoveHerdModal from '@/components/MoveHerdModal';
 import AddHerdModal from '@/components/AddHerdModal';
+import EditPastureModal from '@/components/EditPastureModal';
+import { removePasture } from '@/lib/farm-store';
 import type { GrassType, WaterSupplyType } from '@/lib/data';
 import {
   buildLoadAlert,
@@ -73,6 +75,9 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [showAddHerdModal, setShowAddHerdModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const pasture = PASTURES.find((p) => p.id === pastureId);
   const herd = HERDS.find((h) => h.pastureId === pastureId);
 
@@ -172,6 +177,15 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
             >
               {healthScoreLabel}
             </div>
+            {isCustomFarm && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="text-muted hover:text-white transition-colors text-sm leading-none p-1"
+                title="Editar potrero"
+              >
+                ✏️
+              </button>
+            )}
             <button
               onClick={onClose}
               className="text-muted hover:text-white transition-colors text-xl leading-none p-1"
@@ -506,6 +520,61 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
           </Section>
         )}
 
+        {/* Delete pasture — only for real farms */}
+        {isCustomFarm && (
+          <Section title="Zona de peligro">
+            {!deleteConfirm ? (
+              <button
+                onClick={() => { setDeleteConfirm(true); setDeleteError(null); }}
+                className="w-full rounded-xl py-2.5 text-sm font-medium transition-all border border-dashed border-red-900 hover:border-red-500 text-red-700 hover:text-red-400"
+                style={{ backgroundColor: 'transparent' }}
+              >
+                🗑 Eliminar este potrero
+              </button>
+            ) : (
+              <div
+                className="rounded-xl border border-red-900 p-4 space-y-3"
+                style={{ backgroundColor: '#FF000010' }}
+              >
+                <p className="text-red-300 text-sm font-medium text-center">
+                  ¿Confirmar eliminación de <span className="font-bold">{pasture.name}</span>?
+                </p>
+                {deleteError && (
+                  <p role="alert" className="text-red-400 text-xs text-center">{deleteError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setDeleteConfirm(false); setDeleteError(null); }}
+                    className="flex-1 rounded-xl py-2 text-sm text-muted border border-surface2 hover:text-white transition-colors"
+                    style={{ backgroundColor: '#0A0A0B' }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const result = removePasture(pasture.id);
+                      if (!result) {
+                        setDeleteError('No se encontró el potrero.');
+                        return;
+                      }
+                      if ('error' in result && result.error === 'has_herd') {
+                        setDeleteError('Este potrero tiene hacienda asignada. Mueva la hacienda antes de eliminarlo.');
+                        return;
+                      }
+                      refresh();
+                      onClose();
+                    }}
+                    className="flex-1 rounded-xl py-2 text-sm font-bold text-white transition-colors"
+                    style={{ backgroundColor: '#CC2222' }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            )}
+          </Section>
+        )}
+
         {/* Pasture characteristics — only shown when richer metadata is present */}
         {(pasture.grassType || pasture.waterSupply || pasture.elevationM || pasture.notes) && (
           <Section title="Características del potrero">
@@ -584,6 +653,15 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
           pastureId={pastureId}
           pastureName={pasture.name}
           onClose={() => setShowAddHerdModal(false)}
+          onSaved={() => { refresh(); }}
+        />
+      )}
+
+      {/* Edit pasture modal */}
+      {showEditModal && (
+        <EditPastureModal
+          pasture={pasture}
+          onClose={() => setShowEditModal(false)}
           onSaved={() => { refresh(); }}
         />
       )}
