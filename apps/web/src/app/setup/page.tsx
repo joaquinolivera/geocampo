@@ -244,7 +244,9 @@ export default function SetupPage() {
     if (draftPoints.length < 3) return;
     stopDrawing(); // sets ref synchronously — next map click is ignored
     const ring: [number, number][] = [...draftPoints, draftPoints[0]];
-    setDraft((d) => ({ ...d, coordinates: [ring] }));
+    const coords: [number, number][][] = [ring];
+    const areaHa = Math.round(polygonAreaHectares(coords) * 10) / 10;
+    setDraft((d) => ({ ...d, coordinates: coords, areaHectares: areaHa }));
     setDraftPoints([]);
   }
 
@@ -627,8 +629,15 @@ export default function SetupPage() {
 
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <Label hint="opcional si importás GeoJSON">Superficie (ha)</Label>
-                    <input type="number" min={0.1} step={0.1} className={INPUT} value={draft.areaHectares ?? ''} onChange={(e) => setDraft((d) => ({ ...d, areaHectares: Number(e.target.value) }))} placeholder="25" />
+                    <Label hint={draft.coordinates ? 'calculado del polígono' : 'hectáreas'}>Superficie (ha)</Label>
+                    {draft.coordinates ? (
+                      <div className={INPUT + ' flex items-center gap-2 opacity-75 cursor-default'} style={{ color: '#DEFF9A' }}>
+                        <span>📐</span>
+                        <span>{draft.areaHectares ?? '—'} ha</span>
+                      </div>
+                    ) : (
+                      <input type="number" min={0.1} step={0.1} className={INPUT} value={draft.areaHectares ?? ''} onChange={(e) => setDraft((d) => ({ ...d, areaHectares: Number(e.target.value) }))} placeholder="25" />
+                    )}
                   </div>
                   <div>
                     <Label hint="cabezas">Capacidad</Label>
