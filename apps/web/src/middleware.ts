@@ -116,20 +116,8 @@ async function supabaseMiddleware(request: NextRequest): Promise<NextResponse> {
         return NextResponse.redirect(farmUrl);
       }
 
-      // No farm in DB yet — check local demo cookie (setup wizard may have run offline)
-      const demoCookieForUser = request.cookies.get(SESSION_COOKIE);
-      if (demoCookieForUser?.value) {
-        try {
-          const data = JSON.parse(decodeURIComponent(demoCookieForUser.value));
-          if (data.farmSlug) {
-            const farmUrl = request.nextUrl.clone();
-            farmUrl.pathname = `/${data.farmSlug}`;
-            return NextResponse.redirect(farmUrl);
-          }
-        } catch { /* fall through */ }
-      }
-
-      // New user with no farm — send them to setup
+      // No farm in Supabase — send directly to setup wizard
+      // (don't fall back to demo cookie — that belongs to a different local session)
       const setupUrl = request.nextUrl.clone();
       setupUrl.pathname = '/setup';
       return NextResponse.redirect(setupUrl);
