@@ -1,6 +1,10 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  // All app routes live under /app — matches production same-domain deployment
+  // and local dev proxy (landing:3001 → /app/* → web:3002/app/*).
+  basePath: '/app',
+
   // Workspace packages and mapbox-gl must be transpiled from ESM → CJS for webpack.
   transpilePackages: [
     '@geocampo/shared',

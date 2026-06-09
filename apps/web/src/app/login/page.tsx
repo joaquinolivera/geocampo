@@ -2,6 +2,7 @@
 
 import { Suspense, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
+import Link from 'next/link';
 import { IS_DEMO_MODE, setDemoSession, getBrowserClient, DEMO_FARM_SLUG } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import LanguageToggle from '@/components/LanguageToggle';
@@ -150,12 +151,12 @@ function LoginForm() {
         {!IS_DEMO_MODE && (
           <p className="text-muted text-sm text-center mt-5">
             ¿No tenés cuenta?{' '}
-            <a
+            <Link
               href="/register"
               className="text-lime font-semibold hover:brightness-110 transition-all"
             >
               Registrate
-            </a>
+            </Link>
           </p>
         )}
 
@@ -172,12 +173,12 @@ function LoginForm() {
       </div>
 
       {/* Setup link */}
-      <a
+      <Link
         href="/setup"
         className="mt-4 text-lime/60 hover:text-lime text-xs underline-offset-2 hover:underline transition-colors"
       >
         🌿 Configurar mi campo por primera vez →
-      </a>
+      </Link>
 
       {/* Bottom tagline */}
       <p className="text-muted text-xs mt-4 text-center">
