@@ -80,20 +80,18 @@ users only see rows where `farm_id = auth.jwt() → farm_id`.
 
 ## Phase D — Supabase backend (multi-tenant)
 
-- [ ] **D1** Schema design
-      - Every table has `farm_id uuid references farms(id)` + RLS policy
-      - Tables: `farms`, `farm_members` (role per user), `pastures`, `herds`,
-        `weight_records`, `health_records`, `movements`, `cattle` (Phase G),
-        `employees`, `expenses`, `fuel_logs`, `machinery` (Phase ERP)
-      - Audit log table: `audit_events (farm_id, table_name, row_id, action, changed_by, changed_at, diff jsonb)`
-- [ ] **D2** Supabase Auth + multi-tenant session
-      - JWT custom claim: `farm_id` + `role` injected at login
-      - Invitation flow: owner invites employees by email → role assignment
-- [ ] **D3** Replace localStorage reads/writes with Supabase queries
-      - Feature flag: `IS_DEMO_MODE` → localStorage; real credentials → Supabase
-      - Keep localStorage as offline cache (read-through, write-behind)
+- [x] **D1** Schema design — migrations 001–004 run in Supabase (farms, pastures, herds,
+      weight_records, health_records, movements, cattle, employees, expenses, fuel_logs,
+      machinery + RLS policies + drop handle_new_user trigger)
+- [x] **D2** Supabase Auth + multi-tenant session — browser/server clients, farm_members
+      join, farm selection via sessionStorage, sign-up + sign-in + sign-out
+- [x] **D3a** Supabase READS — FarmDataContext fetches farms/pastures/herds from Supabase
+      when IS_DEMO_MODE=false; falls back to localStorage for offline/demo users
+- [ ] **D3b** Supabase WRITES — persist weight_records, health_records, movements to
+      Supabase on every mutation (currently localStorage-only); keep localStorage as
+      write-behind offline cache
 - [ ] **D4** Real-time sync — `supabase.channel()` subscriptions for collaborative edits
-- [ ] **D5** Role-based access control (RBAC)
+- [ ] **D5** Role-based access control (RBAC) — hide destructive actions based on role
       - owner: full access
       - manager: all except billing and user management
       - vet: health records + cattle view only
@@ -130,13 +128,12 @@ Paraguay Law 7221/2023 + SENACSA Resolution 2103/2024 mandate a DIOB chip per an
 **DIOB spec:** ISO 11784/11785 FDX-B microchip (134.2 kHz) · left ear
 Managed through SINIP (Sistema Nacional de Identificación y Productividad)
 
-- [ ] **G1** `Cattle` entity — individual animal within a herd
-      Schema: `id`, `herdId`, `chipId` (EID/ISO), `visualTagId`, `sex`, `breed`, `dob`, `status`
+- [x] **G1** `Cattle` entity + farm-store functions (addCattle, removeCattle, updateCattle)
 - [ ] **G2** Chip scan entry — manual entry or QR/RFID reader input (mobile)
 - [ ] **G3** Weight records per individual animal (`cattleId`) in addition to herd-level
 - [ ] **G4** Health records per individual animal
-- [ ] **G5** SINIP export — compliant CSV/XML for SENACSA submission
-- [ ] **G6** Trazabilidad timeline per animal — full lifecycle history on web + mobile
+- [x] **G5** SINIP export — `/api/export/sinip` endpoint + download button in CattlePanel
+- [x] **G6** Trazabilidad timeline per animal — CattleDetailPanel with lifecycle history
 
 ---
 
@@ -212,6 +209,21 @@ expenses) and answer natural-language questions about the farm.
       - Flags: no weighing in 45 days for a herd → reminds owner
 - [ ] **J5** Knowledge base — embed FAQs, SENACSA regulations, breed guides
       - Lets AI answer "¿Cuándo debo vacunar contra aftosa?" with regulatory context
+
+---
+
+## Auth UX refactor (pending)
+
+- [ ] **Auth-1** Create `/register` route in `apps/web` — signup form (email + password +
+      confirm password), on success redirect to `/setup`
+- [ ] **Auth-2** Clean up `/login` — remove "Crear cuenta" tab, add "¿No tenés cuenta?"
+      link pointing to `/register`
+- [ ] **Auth-3** Add `/register` to `PUBLIC_PATHS` in middleware
+- [ ] **Auth-4** Landing page "Empezar gratis" CTA already links to `/register?plan=starter`
+      — verify it works end-to-end after Auth-1 is built
+
+_Rationale: signup (acquisition) belongs on the landing/register route; the app login page
+is for returning users only. Standard SaaS pattern (Notion, Linear, etc.)._
 
 ---
 
