@@ -133,7 +133,7 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
         {/* Left sidebar — toggle between map sidebar and ERP panel */}
         {showERP
           ? <ERPPanel onClose={() => setShowERP(false)} />
-          : <Sidebar selection={selection} onSelect={setSelection} />
+          : <Sidebar selection={selection} onSelect={setSelection} onStartDrawing={startDrawing} />
         }
 
         {/* Interactive satellite map */}

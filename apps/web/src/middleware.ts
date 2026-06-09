@@ -17,7 +17,7 @@ const _isPlaceholder = (s: string) =>
 const IS_DEMO_MODE = _isPlaceholder(_url) || _isPlaceholder(_key);
 
 const SESSION_COOKIE = 'geocampo_session';
-const PUBLIC_PATHS = ['/login', '/setup', '/_next', '/favicon.ico'];
+const PUBLIC_PATHS = ['/login', '/register', '/setup', '/_next', '/favicon.ico'];
 
 function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));

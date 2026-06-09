@@ -7,6 +7,7 @@ import { IS_DEMO_MODE, clearDemoSession, getBrowserClient } from '@/lib/supabase
 import { useT } from '@/lib/i18n';
 import { useFarmData } from '@/lib/FarmDataContext';
 import LanguageToggle from './LanguageToggle';
+import ExportMenu from './ExportMenu';
 
 interface TopBarProps {
   onLogout?: () => void;
@@ -154,6 +155,10 @@ export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, c
             </button>
           </>
         )}
+
+        {/* CSV export */}
+        <Divider />
+        <ExportMenu />
 
         {/* Language toggle */}
         <Divider />

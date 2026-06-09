@@ -12,6 +12,7 @@ import type { Employee, AddEmployeeInput } from './db/employees';
 import type { FuelLog, AddFuelLogInput } from './db/fuel';
 import type { Expense, AddExpenseInput } from './db/expenses';
 import type { Machine } from './db/machinery';
+import type { AddCattleInput, UpdateCattleInput } from '@geocampo/shared';
 
 const STORE_KEY = 'geocampo_farm_v1';
 
@@ -34,6 +35,8 @@ export interface StoredFarm {
   fuelLogs?:    FuelLog[];
   expenses?:    Expense[];
   machinery?:   Machine[];
+  // Phase G — individual cattle (DIOB/SENACSA)
+  cattle?:      StoredCattle[];
   createdAt: string;
   updatedAt: string;
 }
@@ -598,4 +601,100 @@ export function addMachine(input: Omit<Machine, 'id' | 'farmId'>): Machine | nul
   farm.machinery = [...(farm.machinery ?? []), m];
   saveStoredFarm(farm);
   return m;
+}
+
+// ─── Phase G — Individual cattle (DIOB / SENACSA) ────────────────────────────
+
+export interface StoredCattle {
+  id:           string;
+  farmId:       string;
+  herdId:       string | null;
+  chipId:       string | null;
+  visualTagId:  string | null;
+  sex:          'male' | 'female' | 'castrated' | null;
+  breed:        string | null;
+  dob:          string | null;  // ISO date string
+  status:       'active' | 'sold' | 'deceased' | 'transferred';
+  notes:        string | null;
+  createdAt:    string;
+  updatedAt:    string;
+}
+
+export function listCattle(herdId?: string): StoredCattle[] {
+  const farm = loadStoredFarm();
+  if (!farm) return [];
+  const all = farm.cattle ?? [];
+  return herdId ? all.filter((c) => c.herdId === herdId) : all;
+}
+
+export function addCattle(input: AddCattleInput): StoredCattle | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+  // Check for duplicate chipId
+  if (input.chipId) {
+    const exists = (farm.cattle ?? []).some((c) => c.chipId === input.chipId);
+    if (exists) throw new Error(`Chip ID ${input.chipId} ya está registrado en este campo.`);
+  }
+  const now = new Date().toISOString();
+  const animal: StoredCattle = {
+    id:          nanoid(),
+    farmId:      farm.id,
+    herdId:      input.herdId,
+    chipId:      input.chipId ?? null,
+    visualTagId: input.visualTagId ?? null,
+    sex:         input.sex ?? null,
+    breed:       input.breed ?? null,
+    dob:         input.dob?.toISOString().slice(0, 10) ?? null,
+    status:      'active',
+    notes:       input.notes ?? null,
+    createdAt:   now,
+    updatedAt:   now,
+  };
+  farm.cattle = [...(farm.cattle ?? []), animal];
+  saveStoredFarm(farm);
+  return animal;
+}
+
+export function updateCattle(id: string, input: UpdateCattleInput): StoredCattle | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+  const idx = (farm.cattle ?? []).findIndex((c) => c.id === id);
+  if (idx === -1) return null;
+  const existing = farm.cattle![idx];
+  // Duplicate chip check when changing chipId
+  if (input.chipId !== undefined && input.chipId !== null && input.chipId !== existing.chipId) {
+    const dup = (farm.cattle ?? []).some((c) => c.id !== id && c.chipId === input.chipId);
+    if (dup) throw new Error(`Chip ID ${input.chipId} ya está registrado en este campo.`);
+  }
+  const updated: StoredCattle = {
+    ...existing,
+    ...(input.herdId      !== undefined && { herdId:      input.herdId }),
+    ...(input.chipId      !== undefined && { chipId:      input.chipId }),
+    ...(input.visualTagId !== undefined && { visualTagId: input.visualTagId }),
+    ...(input.sex         !== undefined && { sex:         input.sex }),
+    ...(input.breed       !== undefined && { breed:       input.breed }),
+    ...(input.dob         !== undefined && { dob:         input.dob?.toISOString().slice(0, 10) ?? null }),
+    ...(input.status      !== undefined && { status:      input.status }),
+    ...(input.notes       !== undefined && { notes:       input.notes }),
+    updatedAt: new Date().toISOString(),
+  };
+  farm.cattle = farm.cattle!.map((c) => (c.id === id ? updated : c));
+  saveStoredFarm(farm);
+  return updated;
+}
+
+export function removeCattle(id: string): boolean {
+  const farm = loadStoredFarm();
+  if (!farm) return false;
+  const before = (farm.cattle ?? []).length;
+  farm.cattle = (farm.cattle ?? []).filter((c) => c.id !== id);
+  if (farm.cattle.length === before) return false;
+  saveStoredFarm(farm);
+  return true;
+}
+
+export function getCattleByChip(chipId: string): StoredCattle | null {
+  const farm = loadStoredFarm();
+  if (!farm) return null;
+  return (farm.cattle ?? []).find((c) => c.chipId === chipId) ?? null;
 }

@@ -77,4 +77,47 @@ export interface Movement {
   createdAt: Date;
 }
 
+// ─── Phase G — Individual cattle (DIOB / SENACSA) ────────────────────────────
+
+export type CattleSex    = 'male' | 'female' | 'castrated';
+export type CattleStatus = 'active' | 'sold' | 'deceased' | 'transferred';
+
+export interface Cattle {
+  id:           string;
+  farmId:       string;
+  herdId:       string | null;
+  /** ISO 11784/11785 FDX-B EID — 15-digit DIOB chip number (left ear) */
+  chipId:       string | null;
+  /** Printed visual tag number (right ear) */
+  visualTagId:  string | null;
+  sex:          CattleSex | null;
+  breed:        string | null;
+  dob:          Date | null;
+  status:       CattleStatus;
+  notes:        string | null;
+  createdAt:    Date;
+  updatedAt:    Date;
+}
+
+export interface AddCattleInput {
+  herdId:       string;
+  chipId?:      string;
+  visualTagId?: string;
+  sex?:         CattleSex;
+  breed?:       string;
+  dob?:         Date;
+  notes?:       string;
+}
+
+export interface UpdateCattleInput {
+  herdId?:      string | null;
+  chipId?:      string | null;
+  visualTagId?: string | null;
+  sex?:         CattleSex | null;
+  breed?:       string | null;
+  dob?:         Date | null;
+  status?:      CattleStatus;
+  notes?:       string | null;
+}
+
 // GeoJSON types are provided by @types/geojson package
