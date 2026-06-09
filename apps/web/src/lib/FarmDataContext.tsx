@@ -4,8 +4,9 @@
  * @fileoverview FarmDataContext — provides farm data to all dashboard components.
  *
  * Priority:
- *  1. localStorage (user's real farm, saved via /setup wizard)
- *  2. Demo data (PASTURES, HERDS, … from data.ts)
+ *  1. Supabase (real DB, when IS_DEMO_MODE=false and user authenticated)
+ *  2. localStorage (user's real farm, saved via /setup wizard)
+ *  3. Demo data (PASTURES, HERDS, … from data.ts)
  *
  * Components replace `import { PASTURES, HERDS } from '@/lib/data'`
  * with `const { PASTURES, HERDS } = useFarmData()`.
@@ -26,8 +27,11 @@ import {
   type HealthRecord,
   type Movement,
   type InfrastructureFeature,
+  type GrassType,
+  type WaterSupplyType,
 } from './data';
 import { loadStoredFarm } from './farm-store';
+import { getBrowserClient, IS_DEMO_MODE } from './supabase';
 
 export interface FarmDataShape {
   DEMO_FARM: typeof DEMO_FARM;
@@ -56,12 +60,96 @@ const defaultData: FarmDataShape = {
 
 const FarmDataCtx = createContext<FarmDataShape>(defaultData);
 
+// ─── Supabase row types (snake_case from DB) ──────────────────────────────────
+
+interface SupabaseFarm {
+  id: string;
+  slug: string;
+  name: string;
+  owner_id: string;
+}
+
+interface SupabasePasture {
+  id: string;
+  farm_id: string;
+  name: string;
+  coordinates: [number, number][][] | null;
+  area_hectares: number | null;
+  carrying_capacity: number | null;
+  grass_type: string | null;
+  water_supply: string | null;
+  notes: string | null;
+  color: string | null;
+}
+
+interface SupabaseHerd {
+  id: string;
+  farm_id: string;
+  pasture_id: string | null;
+  name: string;
+  cattle_count: number;
+  breed: string | null;
+  entry_date: string | null;
+}
+
+// ─── Mappers ──────────────────────────────────────────────────────────────────
+
+function mapPasture(p: SupabasePasture): Pasture {
+  // Derive a center coordinate for the herd marker from the polygon
+  const coords = p.coordinates ?? [];
+  const ring = coords[0] ?? [];
+  const center: [number, number] =
+    ring.length > 0
+      ? [
+          ring.reduce((s, c) => s + c[0], 0) / ring.length,
+          ring.reduce((s, c) => s + c[1], 0) / ring.length,
+        ]
+      : [-58.5, -25.3]; // Fallback: centre of Paraguay/Argentina
+
+  return {
+    id: p.id,
+    name: p.name,
+    areaHectares: p.area_hectares ?? 0,
+    carryingCapacity: p.carrying_capacity ?? 0,
+    color: p.color ?? '#84cc16',
+    geometry: {
+      type: 'Polygon',
+      coordinates: coords.length > 0 ? coords : [[center]],
+    },
+    grassType: (p.grass_type as GrassType) ?? undefined,
+    waterSupply: (p.water_supply as WaterSupplyType) ?? undefined,
+    notes: p.notes ?? undefined,
+    // Store the computed center so herds can use it
+    _center: center,
+  } as Pasture & { _center: [number, number] };
+}
+
+function mapHerd(
+  h: SupabaseHerd,
+  pastureCenter: [number, number],
+): Herd {
+  return {
+    id: h.id,
+    name: h.name,
+    pastureId: h.pasture_id ?? '',
+    cattleCount: h.cattle_count,
+    breed: h.breed ?? '',
+    species: 'bovino',
+    status: 'active',
+    entryDate: h.entry_date ? new Date(h.entry_date) : new Date(),
+    coordinate: pastureCenter,
+  };
+}
+
+// ─── Provider ─────────────────────────────────────────────────────────────────
+
 export function FarmDataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<FarmDataShape>(defaultData);
 
+  // Load from localStorage (offline / demo-cookie users)
   const loadFromStorage = useCallback(() => {
     const stored = loadStoredFarm();
-    if (!stored) return;
+    if (!stored) return false;
 
     setData((prev) => ({
       ...prev,
@@ -96,14 +184,108 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       INFRASTRUCTURE: stored.infrastructure,
       isCustomFarm: true,
     }));
+    return true;
   }, []);
 
-  useEffect(() => { loadFromStorage(); }, [loadFromStorage]);
+  // Load from Supabase (authenticated users in production mode)
+  const loadFromSupabase = useCallback(async () => {
+    const client = getBrowserClient();
+    if (!client) return false;
 
-  // Expose refresh so any component can trigger a re-read after a mutation
+    const { data: { user } } = await client.auth.getUser();
+    if (!user) return false;
+
+    // Get the user's farm (first membership)
+    const { data: memberships, error: mErr } = await client
+      .from('farm_members')
+      .select('farm_id, role, farms(id, slug, name, owner_id)')
+      .eq('user_id', user.id)
+      .limit(1);
+
+    if (mErr || !memberships?.length) return false;
+
+    const farmRow = (memberships[0].farms as SupabaseFarm | null);
+    if (!farmRow) return false;
+
+    const farmId = farmRow.id;
+
+    // Fetch pastures
+    const { data: pastureRows } = await client
+      .from('pastures')
+      .select('id, farm_id, name, coordinates, area_hectares, carrying_capacity, grass_type, water_supply, notes, color')
+      .eq('farm_id', farmId);
+
+    const pastures: Pasture[] = (pastureRows ?? []).map((p: SupabasePasture) =>
+      mapPasture(p)
+    );
+
+    // Build a lookup: pastureId → center coordinate
+    const pastureCenter: Record<string, [number, number]> = {};
+    for (const p of pastures) {
+      const ext = p as Pasture & { _center?: [number, number] };
+      pastureCenter[p.id] = ext._center ?? [-58.5, -25.3];
+    }
+
+    // Fetch herds
+    const { data: herdRows } = await client
+      .from('herds')
+      .select('id, farm_id, pasture_id, name, cattle_count, breed, entry_date')
+      .eq('farm_id', farmId);
+
+    const herds: Herd[] = (herdRows ?? []).map((h: SupabaseHerd) => {
+      const center: [number, number] = (h.pasture_id ? pastureCenter[h.pasture_id] : null) ?? [-58.5, -25.3];
+      return mapHerd(h, center);
+    });
+
+    // Total area from all pastures
+    const totalAreaHectares = pastures.reduce((s, p) => s + p.areaHectares, 0);
+
+    setData((prev) => ({
+      ...prev,
+      DEMO_FARM: {
+        id: farmRow.id,
+        name: farmRow.name,
+        ownerName: user.email?.split('@')[0] ?? 'Usuario',
+        totalAreaHectares,
+        location: (pastures[0] as (Pasture & { _center?: [number, number] }) | undefined)?._center ?? [-58.39, -34.62] as [number, number],
+      },
+      PASTURES: pastures,
+      HERDS: herds,
+      // Weight/health/movements are still localStorage-driven for now
+      WEIGHTS: prev.WEIGHTS,
+      HEALTH_RECORDS: prev.HEALTH_RECORDS,
+      MOVEMENTS: prev.MOVEMENTS,
+      INFRASTRUCTURE: prev.INFRASTRUCTURE,
+      isCustomFarm: true,
+    }));
+    return true;
+  }, []);
+
   useEffect(() => {
-    setData((prev) => ({ ...prev, refresh: loadFromStorage }));
-  }, [loadFromStorage]);
+    async function init() {
+      // In production mode, prefer Supabase; fall back to localStorage
+      if (!IS_DEMO_MODE) {
+        const ok = await loadFromSupabase();
+        if (!ok) loadFromStorage();
+      } else {
+        loadFromStorage();
+      }
+    }
+    void init();
+  }, [loadFromSupabase, loadFromStorage]);
+
+  // refresh: re-runs both paths so mutations (weight, health, etc.) are reflected
+  const refresh = useCallback(() => {
+    if (!IS_DEMO_MODE) {
+      void loadFromSupabase().then((ok) => { if (!ok) loadFromStorage(); });
+    } else {
+      loadFromStorage();
+    }
+  }, [loadFromSupabase, loadFromStorage]);
+
+  useEffect(() => {
+    setData((prev) => ({ ...prev, refresh }));
+  }, [refresh]);
 
   return <FarmDataCtx.Provider value={data}>{children}</FarmDataCtx.Provider>;
 }
