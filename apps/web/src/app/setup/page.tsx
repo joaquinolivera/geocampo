@@ -310,7 +310,19 @@ export default function SetupPage() {
   );
 
   // ── Save ─────────────────────────────────────────────────────────────────────
-  function handleSave() {
+  const [saving, setSaving] = useState(false);
+
+  async function handleSave() {
+    setSaving(true);
+
+    const slug = farmName
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '');
+
+    // Always save to localStorage first (works offline / demo mode)
     const input: FarmInput = {
       name: farmName.trim(),
       ownerName: ownerName.trim(),
@@ -318,13 +330,40 @@ export default function SetupPage() {
       herds: herds as HerdInput[],
     };
     saveStoredFarm(buildStoredFarm(input));
-    setDemoSession(`${ownerName.trim().toLowerCase().replace(/\s+/g, '.')}@campo.local`);
-    const slug = farmName
-      .toLowerCase()
-      .normalize('NFD')
-      .replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '');
+
+    // Store the real farm slug in the session cookie
+    setDemoSession(
+      `${ownerName.trim().toLowerCase().replace(/\s+/g, '.')}@campo.local`,
+      slug,
+    );
+
+    // If a Supabase user is logged in, also persist to the database
+    try {
+      const { getBrowserClient } = await import('@/lib/supabase');
+      const client = getBrowserClient();
+      if (client) {
+        const { data: { session } } = await client.auth.getSession();
+        if (session?.access_token) {
+          const herdsWithIndex = (herds as HerdInput[]).map((h, i) => ({
+            ...h,
+            pastureIndex: i,
+          }));
+          await fetch('/api/farms', {
+            method:  'POST',
+            headers: {
+              'Content-Type':  'application/json',
+              'Authorization': `Bearer ${session.access_token}`,
+            },
+            body: JSON.stringify({ slug, name: farmName.trim(), pastures, herds: herdsWithIndex }),
+          });
+        }
+      }
+    } catch (err) {
+      // Non-fatal — localStorage save still works
+      console.warn('[setup] Supabase save failed, using local data:', err);
+    }
+
+    setSaving(false);
     window.location.href = `/${slug}`;
   }
 
@@ -874,8 +913,13 @@ export default function SetupPage() {
 
               <div className="flex gap-3">
                 <button onClick={() => setStep(3)} className="flex-1 rounded-xl py-3 border border-surface2 text-white text-sm hover:bg-surface transition-colors">← Editar</button>
-                <button onClick={handleSave} className="flex-[2] rounded-xl py-3 font-bold text-charcoal text-sm hover:brightness-110 active:scale-[0.98] transition-all" style={{ backgroundColor: '#DEFF9A' }}>
-                  🌿 Guardar y abrir mi campo
+                <button onClick={handleSave} disabled={saving} className="flex-[2] rounded-xl py-3 font-bold text-charcoal text-sm hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-60" style={{ backgroundColor: '#DEFF9A' }}>
+                  {saving ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-4 h-4 border-2 border-charcoal border-t-transparent rounded-full animate-spin" />
+                      Guardando…
+                    </span>
+                  ) : '🌿 Guardar y abrir mi campo'}
                 </button>
               </div>
 
