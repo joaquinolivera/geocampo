@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { getBrowserClient } from '@/lib/supabase';
 import LanguageToggle from '@/components/LanguageToggle';
@@ -74,13 +75,13 @@ export default function RegisterPage() {
             Te enviamos un link de confirmación a <span className="text-white font-medium">{email}</span>.
             Una vez confirmado, podés iniciar sesión.
           </p>
-          <a
+          <Link
             href="/login"
             className="inline-block w-full rounded-xl py-3 font-bold text-charcoal text-sm text-center transition-all hover:brightness-110"
             style={{ backgroundColor: '#DEFF9A' }}
           >
             Ir al login
-          </a>
+          </Link>
         </div>
       </div>
     );
@@ -198,12 +199,12 @@ export default function RegisterPage() {
         {/* Login link */}
         <p className="text-muted text-sm text-center mt-5">
           ¿Ya tenés cuenta?{' '}
-          <a
+          <Link
             href="/login"
             className="text-lime font-semibold hover:brightness-110 transition-all"
           >
             Iniciá sesión
-          </a>
+          </Link>
         </p>
       </div>
 

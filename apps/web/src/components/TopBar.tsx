@@ -2,6 +2,7 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { buildLoadAlert, getDueStatus } from '@/lib/alerts';
 import { IS_DEMO_MODE, clearDemoSession, getBrowserClient } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
@@ -20,7 +21,7 @@ interface TopBarProps {
 export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, chatOpen }: TopBarProps) {
   const router = useRouter();
   const { t } = useT();
-  const { DEMO_FARM, HERDS, PASTURES, HEALTH_RECORDS } = useFarmData();
+  const { DEMO_FARM, HERDS, PASTURES, HEALTH_RECORDS, userRole } = useFarmData();
 
   const totalCattle = useMemo(
     () => HERDS.reduce((sum, h) => sum + h.cattleCount, 0),
@@ -118,7 +119,7 @@ export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, c
           </>
         )}
 
-        {/* ERP toggle */}
+        {/* ERP toggle + dashboard link */}
         {onToggleERP && (
           <>
             <Divider />
@@ -134,6 +135,13 @@ export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, c
             >
               🏢 ERP
             </button>
+            <Link
+              href="/erp"
+              className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2"
+              title="Dashboard ERP"
+            >
+              📊
+            </Link>
           </>
         )}
 
@@ -153,6 +161,20 @@ export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, c
             >
               🤖 IA
             </button>
+          </>
+        )}
+
+        {/* Team settings — owners only */}
+        {userRole === 'owner' && (
+          <>
+            <Divider />
+            <Link
+              href="/team"
+              className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2"
+              title="Equipo"
+            >
+              👥 Equipo
+            </Link>
           </>
         )}
 

@@ -12,6 +12,7 @@ import ChatPanel from '@/components/ChatPanel';
 import type { SelectionState } from '@/lib/selection';
 import { useFarmData } from '@/lib/FarmDataContext';
 import { polygonAreaHectares, updatePasture } from '@/lib/farm-store';
+import { useCanDo } from '@/components/RoleGate';
 
 // Map must be dynamically imported — mapbox-gl uses browser APIs (no SSR)
 const FarmMap = dynamic(() => import('@/components/FarmMap'), {
@@ -32,6 +33,7 @@ interface FarmPageProps {
 
 export default function FarmPage({ params: _params }: FarmPageProps) {
   const { isCustomFarm, refresh } = useFarmData();
+  const { canEditPastures, canViewFinancials } = useCanDo();
 
   // Selection can be a pasture or an infrastructure feature
   const [selection, setSelection] = useState<SelectionState>(null);
@@ -123,7 +125,7 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
     <div className="h-screen flex flex-col overflow-hidden bg-charcoal">
       <TopBar
         onLogout={clearSelection}
-        onToggleERP={() => setShowERP((v) => !v)}
+        onToggleERP={canViewFinancials ? () => setShowERP((v) => !v) : undefined}
         erpOpen={showERP}
         onToggleChat={() => setShowChat((v) => !v)}
         chatOpen={showChat}
@@ -179,8 +181,8 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
           </div>
         )}
 
-        {/* Floating "+" button — only for real farms, hidden while drawing */}
-        {isCustomFarm && !drawingMode && (
+        {/* Floating "+" button — only for real farms + edit-capable roles, hidden while drawing */}
+        {isCustomFarm && !drawingMode && canEditPastures && (
           <button
             onClick={startDrawing}
             title="Agregar potrero"

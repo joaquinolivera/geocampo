@@ -1,4 +1,6 @@
-import Link from 'next/link';
+// No next/link — all cross-app links are plain <a> tags so the browser does a
+// full navigation through the proxy, not a client-side route change in the
+// landing app's webpack bundle (which doesn't contain the web app's chunks).
 
 // Dev: relative '/app' → proxied to web app on :3002 via next.config rewrites.
 // Production same-domain: set NEXT_PUBLIC_APP_URL=https://geocampo.app/app
@@ -183,19 +185,19 @@ function Nav() {
         <a href="#pricing"   className="hover:text-white transition-colors">Precios</a>
       </nav>
       <div className="flex items-center gap-3">
-        <Link
+        <a
           href={`${APP_URL}/login`}
           className="text-sm text-white/60 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/5"
         >
           Iniciar sesión
-        </Link>
-        <Link
+        </a>
+        <a
           href={`${APP_URL}/register`}
           className="text-sm font-bold rounded-xl px-4 py-2 transition-all hover:opacity-90"
           style={{ backgroundColor: '#DEFF9A', color: '#0A0A0B' }}
         >
           Empezar gratis
-        </Link>
+        </a>
       </div>
     </header>
   );
@@ -223,19 +225,19 @@ function Hero() {
         seguimiento de hacienda, sanidad animal y ERP completo — en una sola plataforma offline-first.
       </p>
       <div className="flex flex-col sm:flex-row gap-4 justify-center">
-        <Link
+        <a
           href={`${APP_URL}/setup`}
           className="rounded-2xl px-8 py-4 font-bold text-base transition-all hover:opacity-90 hover:scale-105"
           style={{ backgroundColor: '#DEFF9A', color: '#0A0A0B' }}
         >
           Crear mi estancia gratis →
-        </Link>
-        <Link
+        </a>
+        <a
           href={`${APP_URL}/estancia-las-pampas`}
           className="rounded-2xl px-8 py-4 font-bold text-base border border-white/20 hover:border-white/40 text-white transition-all hover:bg-white/5"
         >
           Ver demo en vivo
-        </Link>
+        </a>
       </div>
       <p className="text-white/30 text-sm mt-6">Sin tarjeta de crédito · 14 días gratis en todos los planes</p>
     </section>
@@ -407,7 +409,7 @@ function Pricing() {
                   </li>
                 ))}
               </ul>
-              <Link
+              <a
                 href={plan.href}
                 className={`text-center rounded-xl py-3 text-sm font-bold transition-all ${
                   plan.highlighted ? 'hover:opacity-90' : 'border border-white/20 hover:border-white/40 hover:bg-white/5'
@@ -415,7 +417,7 @@ function Pricing() {
                 style={plan.highlighted ? { backgroundColor: '#DEFF9A', color: '#0A0A0B' } : { color: '#fff' }}
               >
                 {plan.cta}
-              </Link>
+              </a>
             </div>
           ))}
         </div>
@@ -479,13 +481,13 @@ function CTA() {
         Empezá gratis hoy. 14 días sin tarjeta. Configurá tu estancia en 5 minutos.
       </p>
       <p className="text-white/30 text-sm mb-10">Funciona en computadora, tablet y celular. Offline y en la nube.</p>
-      <Link
+      <a
         href={`${APP_URL}/setup`}
         className="inline-block rounded-2xl px-10 py-5 font-bold text-lg transition-all hover:opacity-90 hover:scale-105"
         style={{ backgroundColor: '#DEFF9A', color: '#0A0A0B' }}
       >
         Crear mi estancia gratis →
-      </Link>
+      </a>
     </section>
   );
 }

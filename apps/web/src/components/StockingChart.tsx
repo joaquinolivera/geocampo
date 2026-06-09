@@ -91,7 +91,7 @@ export default function StockingChart({ herds, weights }: Props) {
               contentStyle={{ backgroundColor: '#1A1A1B', border: '1px solid #2A2A2B', borderRadius: 8 }}
               labelStyle={{ color: '#AAAAAB', fontSize: 11 }}
               itemStyle={{ fontSize: 12 }}
-              formatter={(v: number, name: string) => [`${v} cab.`, name]}
+              formatter={(v, name) => [`${Number(v)} cab.`, String(name)]}
             />
             {activeHerds.length > 1 && (
               <Legend
