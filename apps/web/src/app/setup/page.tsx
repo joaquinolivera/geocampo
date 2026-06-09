@@ -348,7 +348,7 @@ export default function SetupPage() {
             ...h,
             pastureIndex: i,
           }));
-          await fetch('/api/farms', {
+          const res = await fetch('/api/farms', {
             method:  'POST',
             headers: {
               'Content-Type':  'application/json',
@@ -356,6 +356,8 @@ export default function SetupPage() {
             },
             body: JSON.stringify({ slug, name: farmName.trim(), pastures, herds: herdsWithIndex }),
           });
+          const json = await res.json();
+          console.log('[setup] /api/farms response', res.status, json);
         }
       }
     } catch (err) {
