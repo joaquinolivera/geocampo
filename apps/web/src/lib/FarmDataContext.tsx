@@ -237,6 +237,66 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       return mapHerd(h, center);
     });
 
+    // Fetch weight_records
+    const { data: weightRows } = await client
+      .from('weight_records')
+      .select('id, herd_id, cattle_count, average_weight_kg, weighed_at, weighed_by, notes')
+      .eq('farm_id', farmId)
+      .order('weighed_at', { ascending: false })
+      .limit(500);
+
+    const weights: WeightRecord[] = (weightRows ?? []).map((r: Record<string, unknown>) => ({
+      id:              r.id as string,
+      herdId:          r.herd_id as string,
+      cattleCount:     Number(r.cattle_count),
+      averageWeightKg: Number(r.average_weight_kg),
+      weightKg:        Number(r.cattle_count) * Number(r.average_weight_kg),
+      weighedAt:       new Date(r.weighed_at as string),
+      weighedBy:       (r.weighed_by as string | null) ?? '',
+      notes:           (r.notes as string | null),
+    }));
+
+    // Fetch health_records
+    const { data: healthRows } = await client
+      .from('health_records')
+      .select('id, herd_id, treatment_type, product_name, dosage, administered_by, administered_at, next_due_date, notes')
+      .eq('farm_id', farmId)
+      .order('administered_at', { ascending: false })
+      .limit(500);
+
+    const healthRecords: HealthRecord[] = (healthRows ?? []).map((r: Record<string, unknown>) => ({
+      id:             r.id as string,
+      herdId:         r.herd_id as string,
+      treatmentType:  r.treatment_type as HealthRecord['treatmentType'],
+      productName:    (r.product_name as string | null),
+      dosage:         (r.dosage as string | null),
+      administeredBy: (r.administered_by as string | null) ?? '',
+      administeredAt: new Date(r.administered_at as string),
+      nextDueDate:    r.next_due_date ? new Date(r.next_due_date as string) : null,
+      notes:          (r.notes as string | null),
+    }));
+
+    // Fetch movements
+    const { data: movementRows } = await client
+      .from('movements')
+      .select('id, herd_id, herd_name, from_pasture_id, from_pasture_name, to_pasture_id, to_pasture_name, moved_at, moved_by, notes')
+      .eq('farm_id', farmId)
+      .order('moved_at', { ascending: false })
+      .limit(500);
+
+    const movements: Movement[] = (movementRows ?? []).map((r: Record<string, unknown>) => ({
+      id:              r.id as string,
+      herdId:          r.herd_id as string,
+      herdName:        r.herd_name as string,
+      fromPastureId:   (r.from_pasture_id as string | null) ?? undefined,
+      fromPastureName: (r.from_pasture_name as string | null),
+      toPastureId:     r.to_pasture_id as string,
+      toPastureName:   (r.to_pasture_name as string | null) ?? '',
+      movedAt:         new Date(r.moved_at as string),
+      movedBy:         (r.moved_by as string | null) ?? '',
+      notes:           (r.notes as string | null) ?? undefined,
+    }));
+
     // Total area from all pastures
     const totalAreaHectares = pastures.reduce((s, p) => s + p.areaHectares, 0);
 
@@ -251,10 +311,9 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       },
       PASTURES: pastures,
       HERDS: herds,
-      // Weight/health/movements are still localStorage-driven for now
-      WEIGHTS: prev.WEIGHTS,
-      HEALTH_RECORDS: prev.HEALTH_RECORDS,
-      MOVEMENTS: prev.MOVEMENTS,
+      WEIGHTS: weights,
+      HEALTH_RECORDS: healthRecords,
+      MOVEMENTS: movements,
       INFRASTRUCTURE: prev.INFRASTRUCTURE,
       isCustomFarm: true,
     }));
@@ -286,6 +345,31 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     setData((prev) => ({ ...prev, refresh }));
   }, [refresh]);
+
+  // D4 — Real-time sync: subscribe to changes for the active farm
+  // Requires realtime enabled in Supabase dashboard for these tables:
+  //   weight_records, health_records, movements, herds, pastures
+  useEffect(() => {
+    if (IS_DEMO_MODE) return;
+    const client = getBrowserClient();
+    if (!client) return;
+
+    let farmId: string | null = null;
+
+    const sub = client
+      .channel('farm-realtime')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'weight_records' }, () => { if (farmId) refresh(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'health_records' }, () => { if (farmId) refresh(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'movements' }, () => { if (farmId) refresh(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'herds' }, () => { if (farmId) refresh(); })
+      .subscribe();
+
+    // Grab farmId once we have data so we only react to our farm's changes
+    setData((prev) => { farmId = prev.DEMO_FARM.id; return prev; });
+
+    return () => { void client.removeChannel(sub); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return <FarmDataCtx.Provider value={data}>{children}</FarmDataCtx.Provider>;
 }

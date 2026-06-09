@@ -87,10 +87,12 @@ users only see rows where `farm_id = auth.jwt() → farm_id`.
       join, farm selection via sessionStorage, sign-up + sign-in + sign-out
 - [x] **D3a** Supabase READS — FarmDataContext fetches farms/pastures/herds from Supabase
       when IS_DEMO_MODE=false; falls back to localStorage for offline/demo users
-- [ ] **D3b** Supabase WRITES — persist weight_records, health_records, movements to
+- [x] **D3b** Supabase WRITES — persist weight_records, health_records, movements to
       Supabase on every mutation (currently localStorage-only); keep localStorage as
       write-behind offline cache
-- [ ] **D4** Real-time sync — `supabase.channel()` subscriptions for collaborative edits
+- [x] **D4** Real-time sync — `supabase.channel()` in FarmDataContext
+      (weight_records, health_records, movements, herds); requires realtime enabled
+      in Supabase dashboard per table
 - [ ] **D5** Role-based access control (RBAC) — hide destructive actions based on role
       - owner: full access
       - manager: all except billing and user management
@@ -102,10 +104,10 @@ users only see rows where `farm_id = auth.jwt() → farm_id`.
 
 ## Phase E — Reporting & export
 
-- [ ] **E1** Weight gain chart — ADG over time per herd (recharts)
-- [ ] **E2** Stocking history — heads per pasture over the year (area chart)
-- [ ] **E3** PDF export — farm summary (pastures, herds, weights, health, financials)
-- [ ] **E4** CSV export — weight records, health records, movement history
+- [x] **E1** Weight gain chart — WeightGainChart (ADG/GPD, LineChart) in ParcelDetailPanel
+- [x] **E2** Stocking history — StockingChart (AreaChart, heads per herd over time) in Sidebar
+- [x] **E3** PDF export — farm summary (pastures, herds, weights, health); jsPDF + jspdf-autotable, client-side
+- [x] **E4** CSV export — weight records, health records, movement history; ExportMenu in TopBar
 - [ ] **E5** Weekly email digest — farm summary sent every Monday via Resend
       - Configurable per farm: on/off, recipients, language
 
@@ -113,7 +115,7 @@ users only see rows where `farm_id = auth.jwt() → farm_id`.
 
 ## Phase F — UX improvements
 
-- [ ] **F1** Onboarding — empty state on dashboard with "Configurar mi campo" CTA
+- [x] **F1** Onboarding — empty state in Sidebar when no pastures (OnboardingEmptyState component)
 - [ ] **F2** Dark-mode time picker fix on mobile Safari
 - [ ] **F3** Accessibility audit (WCAG 2.1 AA) — keyboard nav, ARIA roles, contrast
 - [ ] **F4** Offline indicator — banner when offline (web service worker)
@@ -214,11 +216,9 @@ expenses) and answer natural-language questions about the farm.
 
 ## Auth UX refactor (pending)
 
-- [ ] **Auth-1** Create `/register` route in `apps/web` — signup form (email + password +
-      confirm password), on success redirect to `/setup`
-- [ ] **Auth-2** Clean up `/login` — remove "Crear cuenta" tab, add "¿No tenés cuenta?"
-      link pointing to `/register`
-- [ ] **Auth-3** Add `/register` to `PUBLIC_PATHS` in middleware
+- [x] **Auth-1** `/register` page — email + password + confirm + optional farm name; success → check email screen
+- [x] **Auth-2** `/login` cleaned — login-only, "¿No tenés cuenta? Registrate" → /register
+- [x] **Auth-3** `/register` added to `PUBLIC_PATHS` in middleware
 - [ ] **Auth-4** Landing page "Empezar gratis" CTA already links to `/register?plan=starter`
       — verify it works end-to-end after Auth-1 is built
 

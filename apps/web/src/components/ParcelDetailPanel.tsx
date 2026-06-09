@@ -3,11 +3,15 @@
 import { useMemo, useState } from 'react';
 import { useFarmData } from '@/lib/FarmDataContext';
 import WeightEntryModal from '@/components/WeightEntryModal';
+import WeightGainChart from '@/components/WeightGainChart';
 import HealthEntryModal from '@/components/HealthEntryModal';
 import MoveHerdModal from '@/components/MoveHerdModal';
 import AddHerdModal from '@/components/AddHerdModal';
 import EditPastureModal from '@/components/EditPastureModal';
+import CattlePanel from '@/components/CattlePanel';
+import CattleDetailPanel from '@/components/CattleDetailPanel';
 import { removePasture } from '@/lib/farm-store';
+import type { StoredCattle } from '@/lib/farm-store';
 import type { GrassType, WaterSupplyType } from '@/lib/data';
 import {
   buildLoadAlert,
@@ -72,7 +76,7 @@ const WATER_LABELS: Record<WaterSupplyType, { label: string; icon: string }> = {
 
 export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }: ParcelDetailPanelProps) {
   const { t } = useT();
-  const { PASTURES, HERDS, WEIGHTS, HEALTH_RECORDS, MOVEMENTS, refresh, isCustomFarm } = useFarmData();
+  const { DEMO_FARM, PASTURES, HERDS, WEIGHTS, HEALTH_RECORDS, MOVEMENTS, refresh, isCustomFarm } = useFarmData();
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
@@ -80,6 +84,7 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
   const [showEditModal, setShowEditModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [selectedAnimal, setSelectedAnimal] = useState<StoredCattle | null>(null);
   const pasture = PASTURES.find((p) => p.id === pastureId);
   const herd = HERDS.find((h) => h.pastureId === pastureId);
 
@@ -357,6 +362,8 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
                 <p className="text-muted text-sm text-center italic py-2">Sin pesajes registrados</p>
               )}
 
+              <WeightGainChart records={weights} />
+
               {/* Registrar pesaje button — only for real farms */}
               {isCustomFarm && (
                 <button
@@ -522,6 +529,19 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
           </Section>
         )}
 
+        {/* Phase G — Individual cattle (DIOB / SENACSA) */}
+        {herd && (
+          <Section title="Animales individuales (DIOB)">
+            <CattlePanel
+              herdId={herd.id}
+              herdName={herd.name}
+              farmId={DEMO_FARM.id}
+              isCustomFarm={isCustomFarm}
+              onAnimalClick={(animal) => setSelectedAnimal(animal)}
+            />
+          </Section>
+        )}
+
         {/* Delete / redraw pasture — only for real farms */}
         {isCustomFarm && (
           <Section title="Zona de peligro">
@@ -674,6 +694,15 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
           pasture={pasture}
           onClose={() => setShowEditModal(false)}
           onSaved={() => { refresh(); }}
+        />
+      )}
+
+      {/* Phase G — cattle trazabilidad detail */}
+      {selectedAnimal && (
+        <CattleDetailPanel
+          animal={selectedAnimal}
+          onClose={() => setSelectedAnimal(null)}
+          onUpdate={() => { setSelectedAnimal(null); refresh(); }}
         />
       )}
     </div>
