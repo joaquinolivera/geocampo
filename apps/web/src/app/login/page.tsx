@@ -57,8 +57,9 @@ function LoginForm() {
         return;
       }
 
-      router.push(nextPath ?? '/');
-      router.refresh();
+      // Hard navigation ensures the browser sends fresh cookies to the server,
+      // which the middleware needs to detect the Supabase session.
+      window.location.assign(nextPath ? `/app${nextPath}` : '/app');
     })(); });
   };
 
@@ -129,6 +130,16 @@ function LoginForm() {
               <p className="text-critical text-sm">{error}</p>
             </div>
           )}
+
+          {/* Forgot password */}
+          <div className="text-right -mt-1">
+            <Link
+              href="/forgot-password"
+              className="text-muted text-xs hover:text-lime transition-colors"
+            >
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </div>
 
           <button
             type="submit"

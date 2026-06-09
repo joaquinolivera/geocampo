@@ -514,6 +514,35 @@ All cost sources feed into one ledger:
 
 ---
 
-_Last updated: 2026-06-09 — Added Phase K (RBAC), L (Pricing Plans), M (Herd Economics /
-Lotes Comerciales), N (Machinery & Fleet), O (ERP Overhaul). Architecture expands toward
-full cattle-operation management platform._
+## Phase P — Auth & Account Management
+
+- [ ] **P1** Password reset / change password flow
+      - "Forgot password?" link on /login → send reset email via Supabase Auth
+      - /reset-password page: verifies token, lets user set new password
+      - "Change password" section in a /account settings page
+      - On registration: show "check your email to confirm" state
+
+## Phase Q — Map & UX Polish
+
+- [ ] **Q1** Polygon self-intersection validation
+      - When user draws a pasture polygon, validate that no edges cross each other
+      - Detect duplicate/overlapping area with existing pastures on the same farm
+      - Show real-time visual warning (red highlight) if invalid before allowing save
+      - Consider using Turf.js `kinks()` for self-intersection detection
+
+- [ ] **Q2** Double-click pasture to navigate
+      - Double-clicking a pasture polygon on the map opens its detail panel
+      - Currently single-click selects; double-click should open full parcel view
+      - Consider long-press equivalent for mobile
+
+- [ ] **Q3** Herd appears in lot/pasture path (bidirectional link)
+      - When a herd is defined and assigned to a pasture, it should appear in:
+        (a) the Lotes Comerciales list — so a commercial lot can reference the herd
+        (b) the herd's movement history / trazabilidad timeline
+      - Add optional `lote_id` FK on `herds` table so a herd can be tied to a lote
+      - When a lote is opened, show the linked herd with current pasture and head count
+
+---
+
+_Last updated: 2026-06-09 — Added Phases P (Auth), Q (Map & UX Polish) from manual QA.
+Also fixed: RLS recursion, login loop, ERP nav, FarmDataProvider layouts, currencies._

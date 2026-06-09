@@ -37,7 +37,8 @@ export default function NuevaMaquinaPage() {
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-    if (!name.trim() || !farmId) { setError('El nombre es obligatorio.'); return; }
+    if (!farmId) { setError('Sesión no encontrada. Recargá la página o iniciá sesión.'); return; }
+    if (!name.trim()) { setError('El nombre es obligatorio.'); return; }
 
     startTransition(() => { void (async () => {
       const client = getBrowserClient();

@@ -51,7 +51,7 @@ function getMonthKey(date: Date) {
 }
 
 export default function ERPDashboardPage() {
-  const { farmId, HERDS } = useFarmData();
+  const { farmId, farmSlug, HERDS } = useFarmData();
   const [summary, setSummary] = useState<ERPSummary | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -158,8 +158,7 @@ export default function ERPDashboardPage() {
   }
 
   return (
-    <RequiresPlan feature="canUseERP">
-      <div className="min-h-screen bg-charcoal text-white">
+    <div className="min-h-screen bg-charcoal text-white">
 
         {/* Header */}
         <div className="border-b border-surface2 px-6 py-4 flex items-center justify-between">
@@ -259,15 +258,13 @@ export default function ERPDashboardPage() {
                 icon="💸"
                 title="Gastos ERP"
                 sub="Empleados · Gastos generales · Combustible"
-                href="/"
-                action="ERP"
+                href={farmSlug ? `/${farmSlug}` : '/billing'}
               />
             </div>
           </section>
 
         </div>
-      </div>
-    </RequiresPlan>
+    </div>
   );
 }
 
@@ -340,7 +337,7 @@ function CashFlowBars({ costs, sales }: { costs: CostRow[]; sales: SaleRow[] }) 
   );
 }
 
-function ModuleCard({ icon, title, sub, href, action }: { icon: string; title: string; sub: string; href: string; action?: string }) {
+function ModuleCard({ icon, title, sub, href }: { icon: string; title: string; sub: string; href: string }) {
   return (
     <Link
       href={href}

@@ -45,6 +45,8 @@ export interface FarmDataShape {
   isCustomFarm: boolean; // true if loaded from /setup
   /** The active farm's UUID (null until loaded from Supabase) */
   farmId: string | null;
+  /** The active farm's slug (for building links) */
+  farmSlug: string | null;
   /** Current user's role on this farm */
   userRole: FarmRole;
   /** Re-reads localStorage — call after any mutation (addWeightRecord, etc.) */
@@ -61,6 +63,7 @@ const defaultData: FarmDataShape = {
   INFRASTRUCTURE: DEMO_INFRA,
   isCustomFarm: false,
   farmId: null,
+  farmSlug: null,
   userRole: null,
   refresh: () => {},
 };
@@ -192,6 +195,10 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       })),
       INFRASTRUCTURE: stored.infrastructure,
       isCustomFarm: true,
+      // localStorage users own their farm — grant owner role + farmId
+      userRole: 'owner' as import('./useRole').FarmRole,
+      farmId: stored.id,
+      farmSlug: (stored as { slug?: string }).slug ?? null,
     }));
     return true;
   }, []);
@@ -329,6 +336,7 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       INFRASTRUCTURE: prev.INFRASTRUCTURE,
       isCustomFarm: true,
       farmId,
+      farmSlug: farmRow.slug,
       userRole,
     }));
     return true;

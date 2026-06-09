@@ -12,7 +12,7 @@ import { useFarmData } from '@/lib/FarmDataContext';
 
 export default function NuevoLotePage() {
   const router = useRouter();
-  const { farmId } = useFarmData();
+  const { farmId, HERDS } = useFarmData();
 
   const [nombre,       setNombre]       = useState('');
   const [descripcion,  setDesc]         = useState('');
@@ -20,7 +20,8 @@ export default function NuevoLotePage() {
   const [cabezas,      setCabezas]      = useState('');
   const [pesoEntrada,  setPeso]         = useState('');
   const [costoEntrada, setCosto]        = useState('');
-  const [moneda,       setMoneda]       = useState<'USD' | 'ARS'>('USD');
+  const [moneda,       setMoneda]       = useState<'USD' | 'ARS' | 'PYG' | 'BRL'>('USD');
+  const [herdId,       setHerdId]       = useState<string>('');
   const [error,        setError]        = useState<string | null>(null);
   const [isPending,    startTransition] = useTransition();
 
@@ -28,7 +29,11 @@ export default function NuevoLotePage() {
     e.preventDefault();
     setError(null);
 
-    if (!nombre.trim() || !cabezas || !farmId) {
+    if (!farmId) {
+      setError('Sesión no encontrada. Recargá la página o iniciá sesión.');
+      return;
+    }
+    if (!nombre.trim() || !cabezas) {
       setError('Nombre y cantidad de cabezas son obligatorios.');
       return;
     }
@@ -50,6 +55,7 @@ export default function NuevoLotePage() {
           peso_entrada_kg: pesoEntrada ? parseFloat(pesoEntrada) : null,
           costo_entrada:   costoEntrada ? parseFloat(costoEntrada) : 0,
           moneda,
+          herd_id:         herdId || null,
           created_by:      user?.id,
         })
         .select('id')
@@ -131,14 +137,35 @@ export default function NuevoLotePage() {
             <Field label="Moneda">
               <select
                 value={moneda}
-                onChange={(e) => setMoneda(e.target.value as 'USD' | 'ARS')}
+                onChange={(e) => setMoneda(e.target.value as 'USD' | 'ARS' | 'PYG' | 'BRL')}
                 className={inputCls}
               >
-                <option value="USD">USD</option>
-                <option value="ARS">ARS</option>
+                <option value="USD">USD — Dólar</option>
+                <option value="ARS">ARS — Peso argentino</option>
+                <option value="PYG">PYG — Guaraní</option>
+                <option value="BRL">BRL — Real</option>
               </select>
             </Field>
           </div>
+
+          {/* Herd link — optional */}
+          {HERDS.length > 0 && (
+            <Field label="Rodeo / hacienda (opcional)">
+              <select
+                value={herdId}
+                onChange={(e) => setHerdId(e.target.value)}
+                className={inputCls}
+              >
+                <option value="">— Sin rodeo asociado —</option>
+                {HERDS.map((h) => (
+                  <option key={h.id} value={h.id}>
+                    {h.name} ({h.cattleCount} cabezas)
+                  </option>
+                ))}
+              </select>
+              <p className="text-muted text-xs mt-1">Vincula el lote a un rodeo existente para trazabilidad.</p>
+            </Field>
+          )}
 
           <Field label={`Costo de compra total (${moneda})`}>
             <input

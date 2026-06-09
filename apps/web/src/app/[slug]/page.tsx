@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import TopBar from '@/components/TopBar';
 import Sidebar from '@/components/Sidebar';
 import ParcelDetailPanel from '@/components/ParcelDetailPanel';
@@ -62,6 +62,18 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
     setDrawingPoints([]);
     setDrawingMode(true);
   }
+
+  // If arriving from pasture detail page with ?redraw=pastureId, auto-start redraw
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const redrawId = params.get('redraw');
+    if (redrawId && canEditPastures) {
+      startRedraw(redrawId);
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Called from ParcelDetailPanel → "Redibujar límite" */
   const startRedraw = useCallback((pastureId: string) => {

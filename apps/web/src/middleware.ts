@@ -27,7 +27,7 @@ const BASE_PATH = '/app';
 const SESSION_COOKIE = 'geocampo_session';
 
 // Paths that are publicly accessible (relative to BASE_PATH, no /app prefix)
-const PUBLIC_PATHS = ['/login', '/register', '/setup', '/billing', '/api/webhooks', '/favicon.ico'];
+const PUBLIC_PATHS = ['/login', '/register', '/setup', '/billing', '/join', '/forgot-password', '/reset-password', '/api/webhooks', '/favicon.ico'];
 
 /** Strip BASE_PATH prefix so we can compare against PUBLIC_PATHS */
 function relativePath(pathname: string): string {

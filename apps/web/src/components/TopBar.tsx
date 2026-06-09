@@ -119,10 +119,19 @@ export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, c
           </>
         )}
 
-        {/* ERP toggle + dashboard link */}
-        {onToggleERP && (
-          <>
-            <Divider />
+        {/* Feature nav — always visible */}
+        <Divider />
+        <nav className="flex items-center gap-1">
+          <Link href="/lotes" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Lotes Comerciales">
+            🐄 Lotes
+          </Link>
+          <Link href="/maquinaria" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Maquinaria">
+            🚜 Flota
+          </Link>
+          <Link href="/erp" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Dashboard ERP">
+            📊 ERP
+          </Link>
+          {onToggleERP && (
             <button
               onClick={onToggleERP}
               className="text-xs px-2 py-1 rounded-lg border transition-colors"
@@ -131,19 +140,12 @@ export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, c
                 color: erpOpen ? '#DEFF9A' : '#6A6A6B',
                 backgroundColor: erpOpen ? '#DEFF9A15' : 'transparent',
               }}
-              title="Panel ERP"
+              title="Panel ERP lateral"
             >
-              🏢 ERP
+              🏢
             </button>
-            <Link
-              href="/erp"
-              className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2"
-              title="Dashboard ERP"
-            >
-              📊
-            </Link>
-          </>
-        )}
+          )}
+        </nav>
 
         {/* AI Chat toggle */}
         {onToggleChat && (
@@ -185,6 +187,20 @@ export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, c
         {/* Language toggle */}
         <Divider />
         <LanguageToggle />
+
+        {/* Account settings */}
+        {!IS_DEMO_MODE && (
+          <>
+            <Divider />
+            <Link
+              href="/account"
+              className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2"
+              title="Mi cuenta"
+            >
+              ⚙️
+            </Link>
+          </>
+        )}
 
         {/* Logout */}
         <Divider />
