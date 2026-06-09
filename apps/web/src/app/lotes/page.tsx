@@ -74,8 +74,7 @@ export default function LotesPage() {
   }
 
   return (
-    <RequiresPlan feature="canUseERP">
-      <div className="min-h-screen bg-charcoal text-white">
+    <div className="min-h-screen bg-charcoal text-white">
         {/* Header */}
         <div className="border-b border-surface2 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
@@ -142,8 +141,7 @@ export default function LotesPage() {
             </div>
           )}
         </div>
-      </div>
-    </RequiresPlan>
+    </div>
   );
 }
 

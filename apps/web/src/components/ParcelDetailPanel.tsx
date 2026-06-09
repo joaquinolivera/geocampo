@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useFarmData } from '@/lib/FarmDataContext';
 import WeightEntryModal from '@/components/WeightEntryModal';
 import WeightGainChart from '@/components/WeightGainChart';
@@ -11,6 +12,7 @@ import EditPastureModal from '@/components/EditPastureModal';
 import CattlePanel from '@/components/CattlePanel';
 import CattleDetailPanel from '@/components/CattleDetailPanel';
 import { removePasture } from '@/lib/farm-store';
+import { getBrowserClient } from '@/lib/supabase';
 import type { StoredCattle } from '@/lib/farm-store';
 import type { GrassType, WaterSupplyType } from '@/lib/data';
 import {
@@ -85,8 +87,29 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [selectedAnimal, setSelectedAnimal] = useState<StoredCattle | null>(null);
+  // Linked lote comercial for this herd (fetched from Supabase when available)
+  const [linkedLote, setLinkedLote] = useState<{ id: string; nombre: string; estado: string } | null>(null);
+
   const pasture = PASTURES.find((p) => p.id === pastureId);
   const herd = HERDS.find((h) => h.pastureId === pastureId);
+
+  // Fetch lote comercial linked to this herd (Supabase users only)
+  useEffect(() => {
+    setLinkedLote(null);
+    if (!herd) return;
+    const client = getBrowserClient();
+    if (!client) return;
+    void (async () => {
+      const { data } = await client
+        .from('lotes_comerciales')
+        .select('id, nombre, estado')
+        .eq('herd_id', herd.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) setLinkedLote(data as { id: string; nombre: string; estado: string });
+    })();
+  }, [herd?.id]);
 
   const weights = useMemo(
     () =>
@@ -539,6 +562,29 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
               isCustomFarm={isCustomFarm}
               onAnimalClick={(animal) => setSelectedAnimal(animal)}
             />
+          </Section>
+        )}
+
+        {/* Linked lote comercial */}
+        {linkedLote && (
+          <Section title="Lote comercial vinculado">
+            <Link
+              href={`/lotes/${linkedLote.id}`}
+              className="flex items-center gap-3 rounded-xl border border-surface2 px-4 py-3 hover:border-lime/30 transition-colors"
+              style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}
+            >
+              <span className="text-xl">📦</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium">{linkedLote.nombre}</p>
+                <p className="text-muted text-xs mt-0.5">
+                  Estado:{' '}
+                  <span className={linkedLote.estado === 'abierto' ? 'text-lime' : 'text-blue-300'}>
+                    {linkedLote.estado}
+                  </span>
+                </p>
+              </div>
+              <span className="text-muted text-xs">Ver →</span>
+            </Link>
           </Section>
         )}
 

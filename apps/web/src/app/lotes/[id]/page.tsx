@@ -36,6 +36,7 @@ interface LotePnl {
   adg_kg_dia: number | null;
   roi_pct: number | null;
   moneda: string;
+  herd_id: string | null;
 }
 
 interface Gasto {
@@ -66,7 +67,7 @@ function fmt(n: number | null | undefined, currency: string) {
 
 export default function LoteDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const { farmId } = useFarmData();
+  const { farmId, HERDS, PASTURES, farmSlug } = useFarmData();
   const { canEditHerds, canViewFinancials, canAddRecords } = useCanDo();
 
   const [lote,     setLote]    = useState<LotePnl | null>(null);
@@ -94,13 +95,18 @@ export default function LoteDetailPage({ params }: { params: Promise<{ id: strin
     const client = getBrowserClient();
     if (!client) { setLoading(false); return; }
 
-    const [loteRes, gastosRes] = await Promise.all([
+    const [loteRes, gastosRes, herdLinkRes] = await Promise.all([
       client.from('lote_pnl').select('*').eq('id', id).maybeSingle(),
       client.from('gastos_lote').select('id, fecha, categoria, descripcion, monto, moneda')
         .eq('lote_id', id).order('fecha', { ascending: false }),
+      client.from('lotes_comerciales').select('herd_id').eq('id', id).maybeSingle(),
     ]);
 
-    setLote(loteRes.data as LotePnl | null);
+    const pnl = loteRes.data as LotePnl | null;
+    if (pnl) {
+      pnl.herd_id = (herdLinkRes.data as { herd_id: string | null } | null)?.herd_id ?? null;
+    }
+    setLote(pnl);
     setGastos((gastosRes.data ?? []) as Gasto[]);
     setLoading(false);
   };
@@ -234,6 +240,41 @@ export default function LoteDetailPage({ params }: { params: Promise<{ id: strin
             </div>
           </section>
         )}
+
+        {/* Linked herd */}
+        {(() => {
+          const linkedHerd = lote.herd_id ? HERDS.find((h) => h.id === lote.herd_id) : null;
+          if (!linkedHerd) return null;
+          const pasture = linkedHerd.pastureId ? PASTURES.find((p) => p.id === linkedHerd.pastureId) : null;
+          const pastureHref = farmSlug && pasture ? `/${farmSlug}/${pasture.id}` : null;
+          return (
+            <section>
+              <h2 className="text-sm font-semibold text-muted uppercase tracking-wider mb-4">Rodeo vinculado</h2>
+              <div
+                className="rounded-2xl border border-surface2 px-5 py-4 flex items-center gap-4"
+                style={{ backgroundColor: '#111112' }}
+              >
+                <span className="text-2xl">🐄</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-white font-semibold text-sm">{linkedHerd.name}</p>
+                  <p className="text-muted text-xs mt-0.5">
+                    {linkedHerd.cattleCount} cabezas
+                    {linkedHerd.breed ? ` · ${linkedHerd.breed}` : ''}
+                    {pasture ? ` · Potrero: ${pasture.name}` : ''}
+                  </p>
+                </div>
+                {pastureHref && (
+                  <a
+                    href={pastureHref}
+                    className="text-lime text-xs hover:brightness-110 transition-colors shrink-0"
+                  >
+                    Ver potrero →
+                  </a>
+                )}
+              </div>
+            </section>
+          );
+        })()}
 
         {/* Add gasto */}
         {isOpen && canAddRecords && (

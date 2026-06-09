@@ -81,8 +81,7 @@ export default function MaquinariaPage() {
   }
 
   return (
-    <RequiresPlan feature="canUseMachinery">
-      <div className="min-h-screen bg-charcoal text-white">
+    <div className="min-h-screen bg-charcoal text-white">
         <div className="border-b border-surface2 px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link href="/" className="text-muted hover:text-white transition-colors text-sm">← Volver</Link>
@@ -150,7 +149,6 @@ export default function MaquinariaPage() {
             </div>
           )}
         </div>
-      </div>
-    </RequiresPlan>
+    </div>
   );
 }

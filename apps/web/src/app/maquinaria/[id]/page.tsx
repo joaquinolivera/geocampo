@@ -73,6 +73,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
   const [fFecha,  setFFecha]  = useState(new Date().toISOString().slice(0, 10));
   const [fLitros, setFLitros] = useState('');
   const [fCosto,  setFCosto]  = useState('');
+  const [fMoneda, setFMoneda] = useState('ARS');
   const [fError,  setFError]  = useState<string | null>(null);
   const [isPendF, startF]     = useTransition();
 
@@ -119,7 +120,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
       const { error } = await client.from('fuel_logs').insert({
         machinery_id: id, farm_id: farmId,
         fecha: fFecha, litros: parseFloat(fLitros),
-        costo_total: fCosto ? parseFloat(fCosto) : null, moneda: 'ARS',
+        costo_total: fCosto ? parseFloat(fCosto) : null, moneda: fMoneda,
       });
 
       if (error) { setFError(error.message); return; }
@@ -204,7 +205,7 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
           <h2 className="text-sm font-semibold text-muted uppercase tracking-wider mb-4">Combustible</h2>
           {canAddRecords && (
             <form onSubmit={handleAddFuel} className="rounded-2xl border border-surface2 p-4 mb-4 space-y-3" style={{ backgroundColor: '#111112' }}>
-              <div className="grid grid-cols-3 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-white text-xs font-medium mb-1.5">Fecha</label>
                   <input type="date" value={fFecha} onChange={(e) => setFFecha(e.target.value)} className={inputCls} />
@@ -213,9 +214,20 @@ export default function MachineDetailPage({ params }: { params: Promise<{ id: st
                   <label className="block text-white text-xs font-medium mb-1.5">Litros</label>
                   <input type="number" step="0.1" min="0" value={fLitros} onChange={(e) => setFLitros(e.target.value)} placeholder="50" className={inputCls} />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-white text-xs font-medium mb-1.5">Costo (ARS)</label>
+                  <label className="block text-white text-xs font-medium mb-1.5">Costo</label>
                   <input type="number" step="0.01" min="0" value={fCosto} onChange={(e) => setFCosto(e.target.value)} placeholder="0.00" className={inputCls} />
+                </div>
+                <div>
+                  <label className="block text-white text-xs font-medium mb-1.5">Moneda</label>
+                  <select value={fMoneda} onChange={(e) => setFMoneda(e.target.value)} className={inputCls}>
+                    <option value="ARS">ARS — Peso</option>
+                    <option value="USD">USD — Dólar</option>
+                    <option value="PYG">PYG — Guaraní</option>
+                    <option value="BRL">BRL — Real</option>
+                  </select>
                 </div>
               </div>
               {fError && <p className="text-red-400 text-xs">{fError}</p>}

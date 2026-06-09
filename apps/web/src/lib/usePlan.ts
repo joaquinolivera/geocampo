@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useState, useCallback } from 'react';
-import { getBrowserClient } from '@/lib/supabase';
+import { getBrowserClient, IS_DEMO_MODE } from '@/lib/supabase';
 import { useFarmData } from '@/lib/FarmDataContext';
 
 export type PlanTier = 'basico' | 'pro' | 'estancia';
@@ -102,6 +102,11 @@ export function usePlan(): PlanState {
   const [plan, setPlan]       = useState<PlanTier>('basico');
   const [status, setStatus]   = useState<SubStatus>('trialing');
   const [isLoading, setLoading] = useState(true);
+
+  // Demo / offline mode — grant all Estancia features so devs can use every page
+  if (IS_DEMO_MODE) {
+    return buildState('estancia', 'active', false);
+  }
 
   const fetchPlan = useCallback(async () => {
     if (!farmId) {
