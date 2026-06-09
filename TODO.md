@@ -239,5 +239,281 @@ is for returning users only. Standard SaaS pattern (Notion, Linear, etc.)._
 
 ---
 
-_Last updated: 2026-06-08 — Architecture expanded: multi-tenant SaaS, ERP (Phase I),
-AI assistant (Phase J), landing page (Phase H). Phase A + B complete (38 + 18 tests)._
+## Phase K — Role-Based Access Control (RBAC)
+
+Three roles per farm. The permission model is **restrictive by default** — a new
+invite defaults to Employee until explicitly upgraded. Role is stored on the
+`farm_memberships` table alongside `farm_id` and `user_id`.
+
+### Roles
+
+| Capability | Admin (Propietario) | Capataz (Encargado) | Empleado |
+|---|---|---|---|
+| Account & billing | ✅ | ❌ | ❌ |
+| Invite / remove users | ✅ | ❌ | ❌ |
+| Change user roles | ✅ | ❌ | ❌ |
+| Farm configuration (name, plan) | ✅ | ❌ | ❌ |
+| Add / edit / delete pastures | ✅ | ✅ | ❌ |
+| Add / edit / delete herds | ✅ | ✅ | ❌ |
+| Add / edit infrastructure | ✅ | ✅ | ❌ |
+| View map & pastures (read) | ✅ | ✅ | ✅ |
+| Register movements | ✅ | ✅ | ✅ |
+| Register health records | ✅ | ✅ | ✅ |
+| Register weight entries | ✅ | ✅ | ✅ |
+| See financial data (prices, costs) | ✅ | ✅ | ❌ |
+| ERP (employees, expenses, P&L) | ✅ | ✅ | ❌ |
+| Machinery module | ✅ | ✅ | ❌ |
+| Herd economics (buying/selling) | ✅ | ✅ | ❌ |
+| Export reports (PDF, CSV) | ✅ | ✅ | ❌ |
+| AI assistant | ✅ | ✅ | ❌ |
+
+- [ ] **K1** DB migration — `farm_memberships` table (`farm_id`, `user_id`, `role`, `invited_at`, `accepted_at`)
+      - RLS: users can only read/write their own farm data based on membership role
+      - Role enum: `owner` | `capataz` | `empleado`
+- [ ] **K2** Invitation flow
+      - Admin sends invite by email → generates token → user registers or logs in → accepted
+      - `/invite/[token]` route (public) resolves invitation and links account
+      - Email template: "Te invitaron a GeoCampo — Estancia Las Pampas"
+- [ ] **K3** Team management UI (`/[slug]/settings/team`)
+      - List current members + roles
+      - Invite new member (email + role selector)
+      - Remove member / change role (Admin only)
+- [ ] **K4** Role enforcement in frontend
+      - `useRole()` hook returns current user's role for the active farm
+      - Conditionally hide/disable: add pasture button, ERP tab, financial columns
+      - Empleado sees a simplified view: map + movement/health/weight forms only
+- [ ] **K5** Role enforcement in API routes + middleware
+      - All mutations check role server-side (not just UI hiding)
+      - Supabase RLS policies enforce per-column visibility (financial fields hidden for empleado)
+- [ ] **K6** Empleado mobile-first experience
+      - Dedicated simplified layout when role = empleado
+      - Large touch targets, only 3 actions: Movimiento / Sanidad / Pesaje
+      - Cannot navigate to ERP, Reports, Machinery, Settings
+
+---
+
+## Phase L — Pricing Plans & Feature Gates
+
+Three tiers. Billing is already wired (Stripe + middleware). This phase adds
+per-feature gates driven by `subscription_plan` on the `farms` table.
+
+### Plan Comparison
+
+| Feature | Básico ($29/mo) | Pro ($79/mo) | Estancia ($179/mo) |
+|---|---|---|---|
+| Farms | 1 | 1 | Up to 5 |
+| Users | 3 (Admin + 2) | 10 | Unlimited |
+| Roles | Admin only | All 3 roles | All 3 roles |
+| Pastures | Up to 10 | Unlimited | Unlimited |
+| Map & pasture management | ✅ | ✅ | ✅ |
+| Movements, health, weights | ✅ | ✅ | ✅ |
+| ERP (expenses, P&L) | ❌ | ✅ | ✅ |
+| Herd economics (lotes) | ❌ | ✅ | ✅ |
+| Machinery module | ❌ | ✅ | ✅ |
+| AI assistant | ❌ | ✅ | ✅ |
+| SINIP / trazabilidad export | ❌ | ✅ | ✅ |
+| PDF / CSV reports | Limited | Full | Full + custom |
+| Multi-farm dashboard | ❌ | ❌ | ✅ |
+| Priority support | ❌ | ❌ | ✅ |
+| 14-day free trial | ✅ | ✅ | ✅ |
+
+- [ ] **L1** Update Stripe products — create `basico`, `pro`, `estancia` price IDs
+      - Monthly and annual pricing (annual = 2 months free)
+- [ ] **L2** `usePlan()` hook — reads `subscription_plan` from farm context
+      - Returns `{ plan, canUse: (feature: Feature) => boolean }`
+      - Feature flags: `erp`, `herdEconomics`, `machinery`, `ai`, `sinip`, `advancedReports`, `multiFarm`
+- [ ] **L3** Plan gate component `<RequiresPlan feature="erp">` 
+      - Shows upgrade prompt if current plan doesn't include the feature
+      - Upgrade CTA links to `/billing` with pre-selected plan
+- [ ] **L4** Update `/billing` page with all 3 plans + annual toggle
+- [ ] **L5** Multi-farm support (Estancia plan)
+      - `farms` table: one user can own multiple farms
+      - Farm selector in TopBar (currently shows one farm name)
+      - Multi-farm dashboard: aggregate overview across all farms
+
+---
+
+## Phase M — Herd Economics ("Lotes Comerciales")
+
+This is the revenue-generating insight feature. A **Lote Comercial** is a batch
+of cattle tracked from purchase to sale. Think of it as the P&L of a group of
+animals over their entire time on the farm.
+
+### Data model
+
+```
+lote_comercial:
+  id, farm_id, name, status (open|closed)
+  species, category (ternero|novillo|vaca|toro|etc.)
+  opened_at, closed_at
+
+lote_entrada (purchase / birth):
+  lote_id, date, head_count, total_weight_kg
+  price_per_kg | price_per_head, total_cost
+  vendor, origin_certificate, notes
+
+lote_salida (sale / death / transfer):
+  lote_id, date, head_count, total_weight_kg
+  price_per_kg | price_per_head, total_revenue
+  buyer, destination, notes
+
+lote_gasto (costs accrued while in ownership):
+  lote_id, date, category (feed|health|labor|transport|other)
+  amount, description
+  links to: health_record_id | expense_id (optional)
+```
+
+- [ ] **M1** DB migration — `lotes_comerciales`, `lote_entradas`, `lote_salidas`, `lote_gastos`
+- [ ] **M2** Lotes list page (`/[slug]/lotes`)
+      - Table: name, category, # heads, opened date, status (open/closed)
+      - Open vs closed filter tabs
+      - "Nuevo lote" CTA
+- [ ] **M3** Open a lote (purchase/ingreso)
+      - Form: name, species, category, head count, entry weight (total or per head)
+      - Cost: price per kg OR price per head, vendor, date
+      - Optional: link to existing herd in a pasture
+- [ ] **M4** Lote detail page
+      - Header: name, status, heads, days open, total cost to date
+      - Timeline: entries, exits, weight records, health costs, feed costs
+      - Current metrics:
+        - Average daily gain (ADG): (current weight − entry weight) / days
+        - Cost per kg of gain: total costs / kg gained
+        - Break-even sale price: total costs / current weight
+- [ ] **M5** Record weight gain (link to existing weight entry system)
+      - Weight records feed into ADG calculation for the lote
+- [ ] **M6** Close a lote (sale/egreso)
+      - Form: date, head count sold, exit weight, sale price per kg, buyer
+      - Can do partial sales (sell 30 of 50 heads → lote stays open)
+      - Remaining heads continue to accumulate costs
+- [ ] **M7** Lote closed — P&L summary card
+      - Revenue: total kg × sale price
+      - Costs: purchase + health + feed + transport + labor
+      - Gross profit / loss in $ and %
+      - ROI per day (annualized)
+      - Profit per head
+- [ ] **M8** Analytics dashboard
+      - All closed lotes: compare profit per head by category/breed/pasture
+      - Best and worst performing lotes
+      - Historical price trends: purchase price/kg vs sale price/kg over time
+      - ADG benchmark by pasture (which pasture fattens best)
+
+---
+
+## Phase N — Machinery & Fleet Management
+
+Dedicated module for all motorized assets. Stands alone — not bolted onto ERP
+expenses — because it has its own lifecycle: registration → usage → maintenance
+→ depreciation → sale.
+
+### Data model
+
+```
+machinery:
+  id, farm_id, name, type (tractor|truck|sprayer|mower|pump|atv|other)
+  brand, model, year, serial_number, license_plate
+  purchase_date, purchase_price, current_value
+  fuel_type (diesel|gasoline|electric)
+  status (active|in_maintenance|inactive)
+
+fuel_log:
+  machinery_id, date, liters, price_per_liter, total_cost
+  hours_at_fillup, odometer_km (optional), notes
+
+maintenance_record:
+  machinery_id, date, type (oil|filter|tire|belt|brake|general|repair)
+  description, cost, performed_by (internal|external), workshop
+  hours_at_service, next_service_hours | next_service_date
+
+machinery_usage:
+  machinery_id, date, hours_used, task, pasture_id (optional), operator
+  fuel_consumed_liters (estimated from rate)
+```
+
+- [ ] **N1** DB migration — `machinery`, `fuel_logs`, `maintenance_records`, `machinery_usage`
+- [ ] **N2** Machinery registry page (`/[slug]/maquinaria`)
+      - Card grid: equipment name, type icon, status badge
+      - "Agregar equipo" CTA
+      - Equipment form: name, type, brand/model, year, purchase price, fuel type
+- [ ] **N3** Equipment detail page
+      - Header: name, type, current status
+      - Stats: total hours, total fuel cost, total maintenance cost, cost/hour
+      - Tabs: Combustible | Mantenimiento | Uso
+- [ ] **N4** Fuel log
+      - Quick entry: date, liters, price/liter → auto-calculates total cost
+      - Monthly fuel cost chart
+      - Alert: consumption spike vs. rolling average (flags engine issues)
+- [ ] **N5** Maintenance tracker
+      - Log: date, type, cost, who did it, hours at service
+      - Schedule next service: X hours OR specific date
+      - Dashboard widget: equipment overdue or due-soon for service
+      - Full service history exportable as PDF (useful when selling equipment)
+- [ ] **N6** Usage log
+      - Log daily use: hours, task (arado/siembra/transporte/fumigación/otro), operator
+      - Link to pasture (optional) — know which field was worked
+- [ ] **N7** Fleet summary dashboard
+      - Total fleet replacement value
+      - Monthly costs: fuel + maintenance per machine
+      - Utilization rate: hours used / available hours
+      - Maintenance calendar (upcoming services next 30/60/90 days)
+- [ ] **N8** Depreciation tracker
+      - Straight-line or declining balance per asset
+      - Current book value per machine
+      - Fleet total book value (for insurance / financial reporting)
+
+---
+
+## Phase O — ERP Overhaul (Full Financial Dashboard)
+
+Phase I built the ERP UI scaffolding. Phase O turns it into a real financial
+command center with dashboards, reports, and cross-module data aggregation.
+
+### The complete income & expense picture
+
+All cost sources feed into one ledger:
+- **Direct inputs**: manual expenses (Phase I)
+- **Herd costs**: linked from lote_gastos (Phase M)
+- **Machinery costs**: fuel + maintenance from Phase N
+- **Employee labor**: payroll from Phase I
+- **Health treatments**: auto-linked from health records
+
+- [ ] **O1** Unified expense ledger
+      - All expense sources aggregated: ERP manual + lote costs + machinery + employee
+      - Category taxonomy: Sanidad | Alimentación | Combustible | Mano de obra |
+        Maquinaria | Infraestructura | Impuestos | Seguros | Otros
+      - Filterable by category, date range, pasture
+- [ ] **O2** P&L dashboard (full overhaul)
+      - Monthly view: income bars vs expense bars, net margin line
+      - Annual summary with month-by-month breakdown
+      - Income sources: cattle sales + other (rent, services, subsidies)
+      - Expense breakdown: donut chart by category
+- [ ] **O3** Cost per head (live calculation)
+      - Rolling cost per animal on farm: (all expenses YTD) / (current head count)
+      - Break-even price per kg: cost per head / average weight
+      - Trend: cost per head this month vs last 6 months
+- [ ] **O4** Cash flow projection
+      - Known upcoming expenses: scheduled maintenance, employee salaries
+      - Expected income: open lotes projected at current ADG × market price
+      - 90-day cash flow forecast chart
+- [ ] **O5** Budget module
+      - Set annual budget by category
+      - Budget vs actual tracking — red/yellow/green indicators
+      - Alert when a category exceeds 80% of budget mid-period
+- [ ] **O6** Tax preparation export
+      - Annual income/expense report formatted for contador
+      - Itemized list with dates, amounts, categories
+      - Export as PDF + XLSX
+- [ ] **O7** Pasture profitability report
+      - Which pastures generate best weight gain per hectare
+      - Cost per hectare: infrastructure + maintenance + water
+      - Revenue attributed to each pasture via lote tracking
+- [ ] **O8** Employee module (full)
+      - Payroll: base salary, hours worked, overtime, deductions
+      - Attendance calendar
+      - Task log: who worked which day on which pasture/task
+      - IPS contributions (Paraguay social security) tracker
+
+---
+
+_Last updated: 2026-06-09 — Added Phase K (RBAC), L (Pricing Plans), M (Herd Economics /
+Lotes Comerciales), N (Machinery & Fleet), O (ERP Overhaul). Architecture expands toward
+full cattle-operation management platform._

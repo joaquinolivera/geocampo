@@ -14,6 +14,7 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, {
   Source,
@@ -142,6 +143,7 @@ function parseGeoJSON(raw: unknown): ParsedFeature[] {
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function SetupPage() {
+  const router = useRouter();
   const mapRef = useRef<MapRef>(null);
 
   const [step, setStep] = useState(1);
@@ -364,7 +366,7 @@ export default function SetupPage() {
     }
 
     setSaving(false);
-    window.location.href = `/${slug}`;
+    router.push(`/${slug}`);
   }
 
   // ── Map GeoJSON for saved pastures ───────────────────────────────────────────
@@ -557,7 +559,7 @@ export default function SetupPage() {
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-surface2">
         <button
-          onClick={() => { window.location.href = '/login'; }}
+          onClick={() => router.push('/login')}
           className="text-muted text-sm hover:text-white transition-colors"
         >
           ← Volver

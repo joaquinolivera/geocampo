@@ -10,13 +10,22 @@ const nextConfig: NextConfig = {
     '@geocampo/shared',
     '@geocampo/i18n',
     'mapbox-gl',
+    'react-map-gl',
   ],
-  webpack: (config) => {
+  webpack: (config, { isServer }) => {
     // mapbox-gl references 'worker_threads' (Node-only) — stub it out for the browser bundle.
     config.resolve.alias = {
       ...config.resolve.alias,
       'worker_threads': false,
     };
+
+    // Use a unique chunk loading global so the web app's webpack chunks
+    // don't collide with the landing app's chunks when both are served from
+    // the same origin (localhost:3001) via the dev proxy.
+    if (!isServer) {
+      config.output.chunkLoadingGlobal = 'webpackChunkGeoCampoApp';
+    }
+
     return config;
   },
 };

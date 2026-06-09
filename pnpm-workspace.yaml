@@ -1,8 +1,11 @@
 packages:
   - 'apps/*'
   - 'packages/*'
+overrides:
+  react: 19.1.0
+  react-dom: 19.1.0
 allowBuilds:
   '@journeyapps/wa-sqlite': true
-  core-js: set this to true or false
+  core-js: false
   esbuild: true
   sharp: true

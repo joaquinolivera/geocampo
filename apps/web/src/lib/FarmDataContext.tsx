@@ -12,7 +12,8 @@
  * with `const { PASTURES, HERDS } = useFarmData()`.
  */
 
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useRef, type ReactNode } from 'react';
+import { type FarmRole } from './useRole';
 import {
   DEMO_FARM,
   PASTURES as DEMO_PASTURES,
@@ -42,6 +43,10 @@ export interface FarmDataShape {
   MOVEMENTS: Movement[];
   INFRASTRUCTURE: InfrastructureFeature[];
   isCustomFarm: boolean; // true if loaded from /setup
+  /** The active farm's UUID (null until loaded from Supabase) */
+  farmId: string | null;
+  /** Current user's role on this farm */
+  userRole: FarmRole;
   /** Re-reads localStorage — call after any mutation (addWeightRecord, etc.) */
   refresh: () => void;
 }
@@ -55,6 +60,8 @@ const defaultData: FarmDataShape = {
   MOVEMENTS: DEMO_MOVEMENTS,
   INFRASTRUCTURE: DEMO_INFRA,
   isCustomFarm: false,
+  farmId: null,
+  userRole: null,
   refresh: () => {},
 };
 
@@ -145,6 +152,8 @@ function mapHerd(
 
 export function FarmDataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<FarmDataShape>(defaultData);
+  // Track farmId and userRole separately so they survive partial refreshes
+  const farmIdRef = useRef<string | null>(null);
 
   // Load from localStorage (offline / demo-cookie users)
   const loadFromStorage = useCallback(() => {
@@ -195,11 +204,12 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
     const { data: { user } } = await client.auth.getUser();
     if (!user) return false;
 
-    // Get the user's farm (first membership)
+    // Get the user's farm (first accepted membership)
     const { data: memberships, error: mErr } = await client
       .from('farm_members')
       .select('farm_id, role, farms(id, slug, name, owner_id)')
       .eq('user_id', user.id)
+      .not('accepted_at', 'is', null)
       .limit(1);
 
     if (mErr || !memberships?.length) return false;
@@ -208,6 +218,8 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
     if (!farmRow) return false;
 
     const farmId = farmRow.id;
+    const userRole = (memberships[0].role as FarmRole) ?? null;
+    farmIdRef.current = farmId;
 
     // Fetch pastures
     const { data: pastureRows } = await client
@@ -316,6 +328,8 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       MOVEMENTS: movements,
       INFRASTRUCTURE: prev.INFRASTRUCTURE,
       isCustomFarm: true,
+      farmId,
+      userRole,
     }));
     return true;
   }, []);

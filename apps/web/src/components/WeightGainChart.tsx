@@ -79,7 +79,7 @@ export default function WeightGainChart({ records }: Props) {
               contentStyle={{ backgroundColor: '#1A1A1B', border: '1px solid #2A2A2B', borderRadius: 8 }}
               labelStyle={{ color: '#AAAAAB', fontSize: 11 }}
               itemStyle={{ color: '#DEFF9A', fontSize: 12 }}
-              formatter={(v: number) => [`${v.toFixed(1)} kg`, 'Peso prom.']}
+              formatter={(v) => [`${Number(v).toFixed(1)} kg`, 'Peso prom.']}
             />
             <ReferenceLine y={first.averageWeightKg} stroke="#2A2A2B" strokeDasharray="4 4" />
             <Line
