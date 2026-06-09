@@ -190,10 +190,11 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
   // Load from Supabase (authenticated users in production mode)
   const loadFromSupabase = useCallback(async () => {
     const client = getBrowserClient();
-    if (!client) return false;
+    if (!client) { console.log('[FarmData] no client (demo mode)'); return false; }
 
-    const { data: { user } } = await client.auth.getUser();
-    if (!user) return false;
+    const { data: { user }, error: userErr } = await client.auth.getUser();
+    if (!user) { console.log('[FarmData] no user', userErr); return false; }
+    console.log('[FarmData] user', user.email);
 
     // Get the user's farm (first membership)
     const { data: memberships, error: mErr } = await client
@@ -202,9 +203,11 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       .eq('user_id', user.id)
       .limit(1);
 
+    console.log('[FarmData] memberships', memberships, mErr);
     if (mErr || !memberships?.length) return false;
 
     const farmRow = (memberships[0].farms as SupabaseFarm | null);
+    console.log('[FarmData] farmRow', farmRow);
     if (!farmRow) return false;
 
     const farmId = farmRow.id;
@@ -215,6 +218,7 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       .select('id, farm_id, name, coordinates, area_hectares, carrying_capacity, grass_type, water_supply, notes, color')
       .eq('farm_id', farmId);
 
+    console.log('[FarmData] pastureRows', pastureRows?.length, pastureRows);
     const pastures: Pasture[] = (pastureRows ?? []).map((p: SupabasePasture) =>
       mapPasture(p)
     );
@@ -232,6 +236,7 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       .select('id, farm_id, pasture_id, name, cattle_count, breed, entry_date')
       .eq('farm_id', farmId);
 
+    console.log('[FarmData] herdRows', herdRows?.length, herdRows);
     const herds: Herd[] = (herdRows ?? []).map((h: SupabaseHerd) => {
       const center: [number, number] = (h.pasture_id ? pastureCenter[h.pasture_id] : null) ?? [-58.5, -25.3];
       return mapHerd(h, center);
@@ -263,9 +268,11 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
+      console.log('[FarmData] init, IS_DEMO_MODE=', IS_DEMO_MODE);
       // In production mode, prefer Supabase; fall back to localStorage
       if (!IS_DEMO_MODE) {
         const ok = await loadFromSupabase();
+        console.log('[FarmData] loadFromSupabase =>', ok);
         if (!ok) loadFromStorage();
       } else {
         loadFromStorage();
