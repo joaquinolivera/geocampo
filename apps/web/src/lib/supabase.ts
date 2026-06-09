@@ -10,7 +10,11 @@
  */
 
 export const SUPABASE_URL      = process.env.NEXT_PUBLIC_SUPABASE_URL      ?? '';
-export const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
+// Support both the classic JWT anon key and Supabase's newer "publishable key" format
+export const SUPABASE_ANON_KEY =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  '';
 
 // Treat missing OR placeholder values as demo mode
 const isPlaceholder = (s: string) =>
@@ -164,10 +168,10 @@ export function getDemoSession(): DemoSession | null {
   }
 }
 
-export function setDemoSession(email: string) {
+export function setDemoSession(email: string, farmSlug?: string) {
   const session: DemoSession = {
     email,
-    farmSlug: DEMO_FARM_SLUG,
+    farmSlug: farmSlug ?? DEMO_FARM_SLUG,
     name:     email.split('@')[0],
   };
   const encoded  = encodeURIComponent(JSON.stringify(session));
