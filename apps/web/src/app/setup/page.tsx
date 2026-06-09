@@ -628,19 +628,14 @@ export default function SetupPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label hint={draft.coordinates ? 'calculado del polígono' : 'hectáreas'}>Superficie (ha)</Label>
-                    {draft.coordinates ? (
-                      <div className={INPUT + ' flex items-center gap-2 opacity-75 cursor-default'} style={{ color: '#DEFF9A' }}>
-                        <span>📐</span>
-                        <span>{draft.areaHectares ?? '—'} ha</span>
-                      </div>
-                    ) : (
-                      <input type="number" min={0.1} step={0.1} className={INPUT} value={draft.areaHectares ?? ''} onChange={(e) => setDraft((d) => ({ ...d, areaHectares: Number(e.target.value) }))} placeholder="25" />
-                    )}
-                  </div>
-                  <div>
-                    <Label hint="cabezas">Capacidad</Label>
+                  {draft.coordinates && draft.areaHectares && (
+                    <div className="flex items-center gap-2 rounded-xl border border-lime/20 bg-lime/5 px-3 py-2 text-lime text-xs col-span-1">
+                      <span>📐</span>
+                      <span>{draft.areaHectares} ha calculadas</span>
+                    </div>
+                  )}
+                  <div className={draft.coordinates && draft.areaHectares ? 'col-span-1' : 'col-span-2'}>
+                    <Label hint="cabezas">Capacidad de carga</Label>
                     <input type="number" min={1} className={INPUT} value={draft.carryingCapacity ?? ''} onChange={(e) => setDraft((d) => ({ ...d, carryingCapacity: Number(e.target.value) }))} placeholder="20" />
                   </div>
                 </div>
