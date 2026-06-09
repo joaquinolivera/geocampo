@@ -110,10 +110,29 @@ async function supabaseMiddleware(request: NextRequest): Promise<NextResponse> {
         .eq('owner_id', user.id)
         .single();
 
-      const slug = farm?.slug ?? 'mi-campo';
-      const farmUrl = request.nextUrl.clone();
-      farmUrl.pathname = `/${slug}`;
-      return NextResponse.redirect(farmUrl);
+      if (farm?.slug) {
+        const farmUrl = request.nextUrl.clone();
+        farmUrl.pathname = `/${farm.slug}`;
+        return NextResponse.redirect(farmUrl);
+      }
+
+      // No farm in DB yet — check local demo cookie (setup wizard may have run offline)
+      const demoCookieForUser = request.cookies.get(SESSION_COOKIE);
+      if (demoCookieForUser?.value) {
+        try {
+          const data = JSON.parse(decodeURIComponent(demoCookieForUser.value));
+          if (data.farmSlug) {
+            const farmUrl = request.nextUrl.clone();
+            farmUrl.pathname = `/${data.farmSlug}`;
+            return NextResponse.redirect(farmUrl);
+          }
+        } catch { /* fall through */ }
+      }
+
+      // New user with no farm — send them to setup
+      const setupUrl = request.nextUrl.clone();
+      setupUrl.pathname = '/setup';
+      return NextResponse.redirect(setupUrl);
     }
 
     // Local demo cookie user: use farmSlug from cookie
