@@ -9,6 +9,7 @@ import InfraDetailPanel from '@/components/InfraDetailPanel';
 import PastureFormModal from '@/components/PastureFormModal';
 import ERPPanel from '@/components/ERPPanel';
 import ChatPanel from '@/components/ChatPanel';
+import MobileNav from '@/components/MobileNav';
 import type { SelectionState } from '@/lib/selection';
 import { useFarmData } from '@/lib/FarmDataContext';
 import { polygonAreaHectares, updatePasture } from '@/lib/farm-store';
@@ -37,6 +38,9 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
 
   // Selection can be a pasture or an infrastructure feature
   const [selection, setSelection] = useState<SelectionState>(null);
+
+  // Mobile sidebar visibility
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   // Drawing mode state
   const [drawingMode, setDrawingMode] = useState(false);
@@ -144,10 +148,29 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
       />
 
       <div className="flex-1 flex overflow-hidden relative">
-        {/* Left sidebar — toggle between map sidebar and ERP panel */}
+        {/* Left sidebar — hidden on mobile unless toggled; always shown on md+ */}
         {showERP
           ? <ERPPanel onClose={() => setShowERP(false)} />
-          : <Sidebar selection={selection} onSelect={setSelection} onStartDrawing={startDrawing} />
+          : (
+              <>
+                {/* Desktop sidebar */}
+                <div className="hidden md:flex h-full">
+                  <Sidebar selection={selection} onSelect={setSelection} onStartDrawing={startDrawing} />
+                </div>
+                {/* Mobile sidebar overlay */}
+                {mobileSidebarOpen && (
+                  <div className="md:hidden absolute inset-0 z-30 flex">
+                    <div
+                      className="flex-1 overflow-y-auto"
+                      style={{ backgroundColor: '#0A0A0B', maxWidth: '85vw' }}
+                    >
+                      <Sidebar selection={selection} onSelect={(s) => { setSelection(s); setMobileSidebarOpen(false); }} onStartDrawing={startDrawing} />
+                    </div>
+                    <div className="flex-1 bg-black/60" onClick={() => setMobileSidebarOpen(false)} />
+                  </div>
+                )}
+              </>
+            )
         }
 
         {/* Interactive satellite map */}
@@ -232,6 +255,12 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
           onSaved={handlePastureSaved}
         />
       )}
+
+      {/* Mobile bottom navigation bar */}
+      <MobileNav
+        onToggleSidebar={() => setMobileSidebarOpen((v) => !v)}
+        sidebarOpen={mobileSidebarOpen}
+      />
     </div>
   );
 }

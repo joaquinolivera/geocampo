@@ -143,17 +143,24 @@ async function supabaseMiddleware(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // Root /app → redirect to farm slug
+  // Root /app → redirect to farm or farm-picker
   if (pathname === BASE_PATH || pathname === BASE_PATH + '/') {
     if (user) {
-      const { data: farm } = await supabase
-        .from('farms')
-        .select('slug')
-        .eq('owner_id', user.id)
-        .single();
+      // Count accessible farms — if multiple, send to /farms picker
+      const { data: memberships } = await supabase
+        .from('farm_members')
+        .select('farms(slug)')
+        .eq('user_id', user.id)
+        .not('accepted_at', 'is', null);
 
-      if (farm?.slug) {
-        return NextResponse.redirect(toAppPath(request, `/${farm.slug}`));
+      const slugs = ((memberships ?? []) as unknown as Array<{ farms: { slug: string } | null }>)
+        .map((m) => m.farms?.slug).filter(Boolean) as string[];
+
+      if (slugs.length === 1) {
+        return NextResponse.redirect(toAppPath(request, `/${slugs[0]}`));
+      }
+      if (slugs.length > 1) {
+        return NextResponse.redirect(toAppPath(request, '/farms'));
       }
 
       // No farm in Supabase — send to setup wizard

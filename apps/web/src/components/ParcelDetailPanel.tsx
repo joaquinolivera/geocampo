@@ -10,6 +10,8 @@ import MoveHerdModal from '@/components/MoveHerdModal';
 import AddHerdModal from '@/components/AddHerdModal';
 import EditPastureModal from '@/components/EditPastureModal';
 import CattlePanel from '@/components/CattlePanel';
+import GrazingLogPanel from '@/components/GrazingLogPanel';
+import RainfallWidget from '@/components/RainfallWidget';
 import CattleDetailPanel from '@/components/CattleDetailPanel';
 import { removePasture } from '@/lib/farm-store';
 import { getBrowserClient } from '@/lib/supabase';
@@ -587,6 +589,16 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
             </Link>
           </Section>
         )}
+
+        {/* Rainfall log */}
+        <Section title="💧 Lluvia registrada">
+          <RainfallWidget pastureId={pastureId} compact />
+        </Section>
+
+        {/* Grazing rotation log */}
+        <Section title="Historial de pastoreo">
+          <GrazingLogPanel pastureId={pastureId} />
+        </Section>
 
         {/* Delete / redraw pasture — only for real farms */}
         {isCustomFarm && (
