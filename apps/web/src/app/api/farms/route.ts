@@ -108,10 +108,14 @@ export async function POST(req: NextRequest) {
   }
 
   // --- Add owner to farm_members ---
+  // accepted_at MUST be set — middleware's farm lookup filters .not('accepted_at', 'is', null)
+  const ownerEmail = user.email ?? 'unknown@geocampo.app';
   await admin.from('farm_members').insert({
-    farm_id: farm.id,
-    user_id: user.id,
-    role:    'owner',
+    farm_id:     farm.id,
+    user_id:     user.id,
+    role:        'owner',
+    email:       ownerEmail,
+    accepted_at: new Date().toISOString(),
   });
 
   // --- Insert pastures ---
