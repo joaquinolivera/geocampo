@@ -14,6 +14,7 @@ import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
 import { useFarmData } from '@/lib/FarmDataContext';
 import { useCanDo } from '@/components/RoleGate';
+import { exportLotePDF } from '@/lib/lote-pdf';
 
 interface LotePnl {
   id: string;
@@ -201,6 +202,15 @@ export default function LoteDetailPage({ params }: { params: Promise<{ id: strin
           }`}>
             {lote.estado}
           </span>
+          {canViewFinancials && (
+            <button
+              onClick={() => void exportLotePDF({ lote, gastos, farmName: 'GeoCampo' })}
+              className="rounded-xl px-4 py-2 text-sm font-bold border border-surface2 text-muted hover:text-white hover:border-white/20 transition-colors"
+              title="Exportar PDF"
+            >
+              📄 PDF
+            </button>
+          )}
           {isOpen && canEditHerds && (
             <button
               onClick={() => setShowClose(true)}
