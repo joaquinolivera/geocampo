@@ -42,7 +42,7 @@ function LoginForm() {
         return;
       }
 
-      const { error: authError } = await client.auth.signInWithPassword({
+      const { data, error: authError } = await client.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
@@ -57,8 +57,24 @@ function LoginForm() {
         return;
       }
 
-      // Hard navigation ensures the browser sends fresh cookies to the server,
-      // which the middleware needs to detect the Supabase session.
+      // Exchange tokens server-side so middleware's supabase.auth.getUser()
+      // can find the session on the very next request.
+      if (data.session) {
+        try {
+          await fetch('/api/auth/exchange', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              access_token:  data.session.access_token,
+              refresh_token: data.session.refresh_token,
+            }),
+          });
+        } catch {
+          // Non-fatal — browser cookies from signInWithPassword may still work
+        }
+      }
+
+      // Hard navigation sends fresh cookies to the server.
       window.location.assign(nextPath ? `/app${nextPath}` : '/app');
     })(); });
   };

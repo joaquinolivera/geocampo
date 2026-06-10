@@ -1,0 +1,105 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ──────────────────────────────────────────────────────────────
+  # Web app (apps/web — Next.js 15, basePath /app)
+  # ──────────────────────────────────────────────────────────────
+  web:
+    name: Web app — typecheck + build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (apps/web)
+        run: pnpm --filter @geocampo/web typecheck
+
+      - name: Build (apps/web)
+        run: pnpm --filter @geocampo/web build
+        env:
+          # Provide placeholder values so build doesn't fail on missing env vars.
+          # Real secrets live in Vercel / production deployment env.
+          NEXT_PUBLIC_SUPABASE_URL: https://placeholder.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: placeholder_anon_key
+          NEXT_PUBLIC_MAPBOX_TOKEN: pk.placeholder
+          SUPABASE_SERVICE_ROLE_KEY: placeholder_service_key
+          STRIPE_SECRET_KEY: sk_test_placeholder
+          STRIPE_WEBHOOK_SECRET: whsec_placeholder
+          NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY: pk_test_placeholder
+
+  # ──────────────────────────────────────────────────────────────
+  # Landing page (apps/landing — static/Next.js)
+  # ──────────────────────────────────────────────────────────────
+  landing:
+    name: Landing — typecheck + build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck (apps/landing)
+        run: pnpm --filter @geocampo/landing typecheck
+        continue-on-error: true  # landing may not have strict tsconfig yet
+
+      - name: Build (apps/landing)
+        run: pnpm --filter @geocampo/landing build
+
+  # ──────────────────────────────────────────────────────────────
+  # Shared packages tests
+  # ──────────────────────────────────────────────────────────────
+  shared-tests:
+    name: Shared packages — Jest
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run tests (root + shared)
+        run: pnpm test --passWithNoTests
+        working-directory: .
