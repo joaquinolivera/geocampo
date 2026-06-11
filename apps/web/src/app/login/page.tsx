@@ -3,7 +3,7 @@
 import { Suspense, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { IS_DEMO_MODE, setDemoSession, getBrowserClient, DEMO_FARM_SLUG } from '@/lib/supabase';
+import { IS_DEMO_MODE, setDemoSession, DEMO_FARM_SLUG, getBrowserClient } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import LanguageToggle from '@/components/LanguageToggle';
 
@@ -36,45 +36,34 @@ function LoginForm() {
         return;
       }
 
+      // Use the browser Supabase client directly.
+      // createBrowserClient writes cookies to document.cookie synchronously
+      // inside _saveSession (before signInWithPassword resolves), so by the
+      // time window.location.assign fires the session is already in the
+      // browser's cookie jar and will be sent with the next request.
       const client = getBrowserClient();
       if (!client) {
-        setError(t('auth.errConfig'));
+        setError('Error de configuración.');
         return;
       }
 
-      const { data, error: authError } = await client.auth.signInWithPassword({
+      const { error: signInError } = await client.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
-      if (authError) {
-        const msg = authError.message.toLowerCase();
-        if (msg.includes('invalid') || msg.includes('credentials') || msg.includes('wrong') || msg.includes('email not confirmed')) {
-          setError('Email o contraseña incorrectos.');
-        } else {
-          setError(authError.message);
-        }
+      if (signInError) {
+        const msg = signInError.message.toLowerCase();
+        setError(
+          msg.includes('invalid') || msg.includes('credentials') || msg.includes('wrong')
+            ? 'Email o contraseña incorrectos.'
+            : signInError.message
+        );
         return;
       }
 
-      // Exchange tokens server-side so middleware's supabase.auth.getUser()
-      // can find the session on the very next request.
-      if (data.session) {
-        try {
-          await fetch('/api/auth/exchange', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              access_token:  data.session.access_token,
-              refresh_token: data.session.refresh_token,
-            }),
-          });
-        } catch {
-          // Non-fatal — browser cookies from signInWithPassword may still work
-        }
-      }
-
-      // Hard navigation sends fresh cookies to the server.
+      // Cookies are in document.cookie. Hard navigation so middleware
+      // reads them from the Cookie header on the very next request.
       window.location.assign(nextPath ? `/app${nextPath}` : '/app');
     })(); });
   };

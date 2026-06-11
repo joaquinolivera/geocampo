@@ -27,7 +27,7 @@ const BASE_PATH = '/app';
 const SESSION_COOKIE = 'geocampo_session';
 
 // Paths that are publicly accessible (relative to BASE_PATH, no /app prefix)
-const PUBLIC_PATHS = ['/login', '/register', '/setup', '/billing', '/join', '/forgot-password', '/reset-password', '/api/webhooks', '/favicon.ico'];
+const PUBLIC_PATHS = ['/login', '/register', '/setup', '/billing', '/join', '/forgot-password', '/reset-password', '/api/auth', '/api/webhooks', '/favicon.ico'];
 
 /** Strip BASE_PATH prefix so we can compare against PUBLIC_PATHS */
 function relativePath(pathname: string): string {
@@ -111,6 +111,8 @@ async function supabaseMiddleware(request: NextRequest): Promise<NextResponse> {
   // Accept either a real Supabase session OR the local demo cookie (setup wizard users)
   const demoCookie = request.cookies.get(SESSION_COOKIE);
   const hasLocalSession = !!demoCookie?.value;
+
+  console.log(`[middleware] ${pathname} | user=${user?.id ?? 'null'} | demo=${hasLocalSession} | cookies=[${request.cookies.getAll().map(c=>c.name).join(',')}]`);
 
   if (!user && !hasLocalSession) {
     const loginUrl = toAppPath(request, '/login');
