@@ -14,7 +14,12 @@ if (typeof navigator !== 'undefined' && navigator.product !== 'ReactNative') {
   // Native platform
   try {
     Mapbox = require('@rnmapbox/maps').default;
-    Mapbox.setAccessToken('YOUR_MAPBOX_ACCESS_TOKEN');
+    // Public Mapbox token is injected at build time via EXPO_PUBLIC_MAPBOX_TOKEN.
+    // Never hardcode tokens here — set it in .env / EAS secrets.
+    const token = process.env.EXPO_PUBLIC_MAPBOX_TOKEN;
+    if (token) {
+      Mapbox.setAccessToken(token);
+    }
   } catch (e) {
     Mapbox = null;
   }

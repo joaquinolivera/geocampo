@@ -1,10 +1,10 @@
 /**
  * @fileoverview Next.js middleware — session protection for GeoCampo.
  *
- * The web app has basePath: '/app' (see next.config.ts), so all routes are
- * mounted under /app in production. Middleware sees the full path including
- * the basePath prefix. BASE_PATH strips it for internal path comparisons and
- * is prepended again for any redirect targets.
+ * IMPORTANT: Next.js 15 strips the basePath from request.nextUrl.pathname
+ * before middleware runs. So for a request to /app/login, middleware sees
+ * pathname = '/login' (not '/app/login'). relativePath() is therefore a no-op
+ * for most paths, but is kept for safety.
  *
  * Demo mode  (no Supabase): checks for `geocampo_session` cookie.
  * Production (Supabase set): refreshes the Supabase session on every request.
@@ -62,8 +62,10 @@ function demoMiddleware(request: NextRequest): NextResponse {
     return NextResponse.redirect(loginUrl);
   }
 
-  // Root /app → redirect to farm slug stored in session
-  if (pathname === BASE_PATH || pathname === BASE_PATH + '/') {
+  // Root → redirect to farm slug stored in session
+  // Note: Next.js strips basePath, so pathname is '/' not '/app'
+  const rel = relativePath(pathname);
+  if (rel === '/') {
     try {
       const data = JSON.parse(decodeURIComponent(session.value));
       const slug = data.farmSlug ?? 'estancia-las-pampas';
@@ -108,21 +110,21 @@ async function supabaseMiddleware(request: NextRequest): Promise<NextResponse> {
 
   if (isPublic(pathname)) return response;
 
+  // Relative path (basePath stripped by Next.js 15 already, but kept for safety)
+  const rel = relativePath(pathname);
+
   // Accept either a real Supabase session OR the local demo cookie (setup wizard users)
   const demoCookie = request.cookies.get(SESSION_COOKIE);
   const hasLocalSession = !!demoCookie?.value;
 
-  console.log(`[middleware] ${pathname} | user=${user?.id ?? 'null'} | demo=${hasLocalSession} | cookies=[${request.cookies.getAll().map(c=>c.name).join(',')}]`);
-
   if (!user && !hasLocalSession) {
     const loginUrl = toAppPath(request, '/login');
-    loginUrl.searchParams.set('next', relativePath(pathname));
+    loginUrl.searchParams.set('next', rel);
     return NextResponse.redirect(loginUrl);
   }
 
   // ── Subscription gate (Supabase users only) ───────────────────────────────
   // Skip /billing and /api to avoid redirect loops.
-  const rel = relativePath(pathname);
   if (user && !rel.startsWith('/billing') && !rel.startsWith('/api')) {
     const { data: farm } = await supabase
       .from('farms')
@@ -145,8 +147,9 @@ async function supabaseMiddleware(request: NextRequest): Promise<NextResponse> {
     }
   }
 
-  // Root /app → redirect to farm or farm-picker
-  if (pathname === BASE_PATH || pathname === BASE_PATH + '/') {
+  // Root → redirect to farm or farm-picker
+  // Next.js 15 strips basePath before middleware runs, so pathname is '/' not '/app'
+  if (rel === '/') {
     if (user) {
       // Count accessible farms — if multiple, send to /farms picker
       const { data: memberships } = await supabase

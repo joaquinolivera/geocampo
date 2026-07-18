@@ -7,15 +7,16 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import WeightEntryModal from '@/components/WeightEntryModal';
 
-// Mock addWeightRecord so we don't need localStorage in these tests
-const mockAddWeightRecord = jest.fn();
-jest.mock('@/lib/farm-store', () => ({
-  addWeightRecord: (...args: unknown[]) => mockAddWeightRecord(...args),
+// Mock the weights DB layer so we don't need localStorage/Supabase in these tests
+const mockWeightsAdd = jest.fn();
+jest.mock('@/lib/db/weights', () => ({
+  weightsDb: { add: (...args: unknown[]) => mockWeightsAdd(...args) },
 }));
 
-// Mock useFarmData — WeightEntryModal needs herd info
+// Mock useFarmData — WeightEntryModal needs the active farm id + herd info
 jest.mock('@/lib/FarmDataContext', () => ({
   useFarmData: () => ({
+    DEMO_FARM: { id: 'farm-1' },
     HERDS: [
       {
         id: 'herd-1',
@@ -36,7 +37,7 @@ const defaultProps = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockAddWeightRecord.mockReturnValue({ weightRecords: [] });
+  mockWeightsAdd.mockResolvedValue({ id: 'w1' });
 });
 
 describe('WeightEntryModal', () => {
@@ -74,7 +75,7 @@ describe('WeightEntryModal', () => {
     expect(screen.getByRole('button', { name: /guardar/i })).not.toBeDisabled();
   });
 
-  it('calls addWeightRecord with correct arguments on submit', async () => {
+  it('calls weightsDb.add with correct arguments on submit', async () => {
     render(<WeightEntryModal {...defaultProps} />);
     const user = userEvent.setup();
 
@@ -83,9 +84,10 @@ describe('WeightEntryModal', () => {
     await user.type(screen.getByLabelText(/notas|observaciones/i), 'Test note');
     await user.click(screen.getByRole('button', { name: /guardar/i }));
 
-    expect(mockAddWeightRecord).toHaveBeenCalledWith(
-      'herd-1',
+    expect(mockWeightsAdd).toHaveBeenCalledWith(
+      'farm-1',
       expect.objectContaining({
+        herdId: 'herd-1',
         cattleCount: 35,
         averageWeightKg: 320,
         notes: 'Test note',
@@ -115,8 +117,8 @@ describe('WeightEntryModal', () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an error when addWeightRecord returns null (no farm)', async () => {
-    mockAddWeightRecord.mockReturnValue(null);
+  it('shows an error when weightsDb.add fails', async () => {
+    mockWeightsAdd.mockRejectedValue(new Error('no farm'));
     render(<WeightEntryModal {...defaultProps} />);
     const user = userEvent.setup();
 
