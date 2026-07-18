@@ -7,9 +7,15 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import HealthEntryModal from '@/components/HealthEntryModal';
 
-const mockAddHealthRecord = jest.fn();
-jest.mock('@/lib/farm-store', () => ({
-  addHealthRecord: (...args: unknown[]) => mockAddHealthRecord(...args),
+const mockHealthAdd = jest.fn();
+jest.mock('@/lib/db/health', () => ({
+  healthDb: { add: (...args: unknown[]) => mockHealthAdd(...args) },
+}));
+
+jest.mock('@/lib/FarmDataContext', () => ({
+  useFarmData: () => ({
+    DEMO_FARM: { id: 'farm-1' },
+  }),
 }));
 
 const defaultProps = {
@@ -21,7 +27,7 @@ const defaultProps = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockAddHealthRecord.mockReturnValue({ healthRecords: [] });
+  mockHealthAdd.mockResolvedValue({ id: 'h1' });
 });
 
 describe('HealthEntryModal', () => {
@@ -58,16 +64,17 @@ describe('HealthEntryModal', () => {
     expect(screen.getByRole('button', { name: /guardar/i })).not.toBeDisabled();
   });
 
-  it('calls addHealthRecord with correct arguments on submit', async () => {
+  it('calls healthDb.add with correct arguments on submit', async () => {
     render(<HealthEntryModal {...defaultProps} />);
     const user = userEvent.setup();
 
     await user.type(screen.getByLabelText(/aplicado por/i), 'Dr. García');
     await user.click(screen.getByRole('button', { name: /guardar/i }));
 
-    expect(mockAddHealthRecord).toHaveBeenCalledWith(
-      'herd-1',
+    expect(mockHealthAdd).toHaveBeenCalledWith(
+      'farm-1',
       expect.objectContaining({
+        herdId: 'herd-1',
         administeredBy: 'Dr. García',
         treatmentType: expect.any(String),
       })
@@ -93,8 +100,8 @@ describe('HealthEntryModal', () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an error when addHealthRecord returns null', async () => {
-    mockAddHealthRecord.mockReturnValue(null);
+  it('shows an error when healthDb.add fails', async () => {
+    mockHealthAdd.mockRejectedValue(new Error('no farm'));
     render(<HealthEntryModal {...defaultProps} />);
     const user = userEvent.setup();
 

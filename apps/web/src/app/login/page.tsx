@@ -36,14 +36,9 @@ function LoginForm() {
         return;
       }
 
-      // Use the browser Supabase client directly.
-      // createBrowserClient writes cookies to document.cookie synchronously
-      // inside _saveSession (before signInWithPassword resolves), so by the
-      // time window.location.assign fires the session is already in the
-      // browser's cookie jar and will be sent with the next request.
       const client = getBrowserClient();
       if (!client) {
-        setError('Error de configuración.');
+        setError('Error de configuración: no se pudo crear el cliente Supabase.');
         return;
       }
 

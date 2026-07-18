@@ -7,9 +7,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import MoveHerdModal from '@/components/MoveHerdModal';
 
-const mockMoveHerd = jest.fn();
-jest.mock('@/lib/farm-store', () => ({
-  moveHerd: (...args: unknown[]) => mockMoveHerd(...args),
+const mockHerdsMove = jest.fn();
+jest.mock('@/lib/db/herds', () => ({
+  herdsDb: { move: (...args: unknown[]) => mockHerdsMove(...args) },
 }));
 
 // Provide pasture list via FarmDataContext
@@ -33,7 +33,7 @@ const defaultProps = {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockMoveHerd.mockReturnValue({ herds: [], movements: [] });
+  mockHerdsMove.mockResolvedValue({ id: 'herd-1' });
 });
 
 describe('MoveHerdModal', () => {
@@ -76,14 +76,14 @@ describe('MoveHerdModal', () => {
     expect(screen.getByRole('button', { name: /mover/i })).not.toBeDisabled();
   });
 
-  it('calls moveHerd with correct arguments on submit', async () => {
+  it('calls herdsDb.move with correct arguments on submit', async () => {
     render(<MoveHerdModal {...defaultProps} />);
     const user = userEvent.setup();
 
     await user.type(screen.getByLabelText(/movido por/i), 'Jose');
     await user.click(screen.getByRole('button', { name: /mover/i }));
 
-    expect(mockMoveHerd).toHaveBeenCalledWith(
+    expect(mockHerdsMove).toHaveBeenCalledWith(
       'herd-1',
       expect.objectContaining({
         toPastureId: expect.any(String),
@@ -112,8 +112,8 @@ describe('MoveHerdModal', () => {
     expect(defaultProps.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('shows an error when moveHerd returns null', async () => {
-    mockMoveHerd.mockReturnValue(null);
+  it('shows an error when herdsDb.move fails', async () => {
+    mockHerdsMove.mockRejectedValue(new Error('no farm'));
     render(<MoveHerdModal {...defaultProps} />);
     const user = userEvent.setup();
 
