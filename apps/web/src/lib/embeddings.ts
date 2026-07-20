@@ -15,6 +15,7 @@
  */
 
 import { IS_DEMO_MODE } from './supabase';
+import { apiPath } from './api';
 import type { Pasture } from './data';
 import type { Herd } from './data';
 import type { HealthRecord } from './data';
@@ -82,7 +83,7 @@ interface EmbedPayload {
 export async function ingestEmbedding(payload: EmbedPayload): Promise<void> {
   if (IS_DEMO_MODE) return;
   try {
-    await fetch('/api/embed', {
+    await fetch(apiPath('/api/embed'), {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(payload),

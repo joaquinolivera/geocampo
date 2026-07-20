@@ -11,6 +11,7 @@ import { Suspense, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
+import { apiPath } from '@/lib/api';
 
 type State = 'loading' | 'success' | 'error' | 'needs-login';
 
@@ -45,7 +46,7 @@ function JoinContent() {
         return;
       }
 
-      const res = await fetch('/api/team/accept', {
+      const res = await fetch(apiPath('/api/team/accept'), {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',

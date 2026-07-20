@@ -10,6 +10,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { apiPath } from '@/lib/api';
 
 interface Message {
   id:      string;
@@ -62,7 +63,7 @@ export default function ChatPanel({ farmId, onClose }: ChatPanelProps) {
     setMessages((prev) => [...prev, userMsg, placeholderMsg]);
 
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch(apiPath('/api/chat'), {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ message: trimmed, farmId }),
