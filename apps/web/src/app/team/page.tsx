@@ -12,6 +12,7 @@ import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
+import { apiPath } from '@/lib/api';
 import { useFarmData } from '@/lib/FarmDataContext';
 
 interface Member {
@@ -97,7 +98,7 @@ export default function TeamPage() {
       const { data: { session } } = await client.auth.getSession();
       if (!session) return;
 
-      const res = await fetch('/api/team/invite', {
+      const res = await fetch(apiPath('/api/team/invite'), {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',

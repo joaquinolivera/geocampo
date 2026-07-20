@@ -35,6 +35,7 @@ import {
   type FarmInput,
 } from '@/lib/farm-store';
 import { setDemoSession, IS_DEMO_MODE } from '@/lib/supabase';
+import { apiPath } from '@/lib/api';
 import { type GrassType, type WaterSupplyType } from '@/lib/data';
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -363,7 +364,7 @@ export default function SetupPage() {
         ...h,
         pastureIndex: i,
       }));
-      const res = await fetch('/api/farms', {
+      const res = await fetch(apiPath('/api/farms'), {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',

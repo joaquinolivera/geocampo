@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { getBrowserClient } from '@/lib/supabase';
+import { apiPath } from '@/lib/api';
 import { usePlan, type PlanTier } from '@/lib/usePlan';
 import { useFarmData } from '@/lib/FarmDataContext';
 
@@ -101,7 +102,7 @@ export default function BillingPage() {
       const client = getBrowserClient();
       const session = client ? (await client.auth.getSession()).data.session : null;
 
-      const res = await fetch('/api/checkout', {
+      const res = await fetch(apiPath('/api/checkout'), {
         method:  'POST',
         headers: {
           'Content-Type':  'application/json',
