@@ -35,6 +35,7 @@ import {
   type WaterSupplyType,
 } from './data';
 import { getBrowserClient, IS_DEMO_MODE } from './supabase';
+import { clearStoredFarm } from './farm-store';
 
 export interface FarmDataShape {
   DEMO_FARM: typeof DEMO_FARM;
@@ -44,7 +45,7 @@ export interface FarmDataShape {
   HEALTH_RECORDS: HealthRecord[];
   MOVEMENTS: Movement[];
   INFRASTRUCTURE: InfrastructureFeature[];
-  isCustomFarm: boolean; // true if loaded from /setup
+  isCustomFarm: boolean;
   /** The active farm's UUID (null until loaded from Supabase) */
   farmId: string | null;
   /** The active farm's slug (for building links) */
@@ -55,20 +56,37 @@ export interface FarmDataShape {
   refresh: () => void;
 }
 
-const defaultData: FarmDataShape = {
-  DEMO_FARM,
-  PASTURES: DEMO_PASTURES,
-  HERDS: DEMO_HERDS,
-  WEIGHTS: DEMO_WEIGHTS,
-  HEALTH_RECORDS: DEMO_HEALTH,
-  MOVEMENTS: DEMO_MOVEMENTS,
-  INFRASTRUCTURE: DEMO_INFRA,
-  isCustomFarm: false,
-  farmId: null,
-  farmSlug: null,
-  userRole: null,
-  refresh: () => {},
-};
+// In production: start with empty state so no demo data ever flashes.
+// In demo mode: start with seed data from data.ts.
+const defaultData: FarmDataShape = IS_DEMO_MODE
+  ? {
+      DEMO_FARM,
+      PASTURES: DEMO_PASTURES,
+      HERDS: DEMO_HERDS,
+      WEIGHTS: DEMO_WEIGHTS,
+      HEALTH_RECORDS: DEMO_HEALTH,
+      MOVEMENTS: DEMO_MOVEMENTS,
+      INFRASTRUCTURE: DEMO_INFRA,
+      isCustomFarm: false,
+      farmId: null,
+      farmSlug: null,
+      userRole: null,
+      refresh: () => {},
+    }
+  : {
+      DEMO_FARM,
+      PASTURES: [],
+      HERDS: [],
+      WEIGHTS: [],
+      HEALTH_RECORDS: [],
+      MOVEMENTS: [],
+      INFRASTRUCTURE: [],
+      isCustomFarm: false,
+      farmId: null,
+      farmSlug: null,
+      userRole: null,
+      refresh: () => {},
+    };
 
 const FarmDataCtx = createContext<FarmDataShape>(defaultData);
 
@@ -157,8 +175,12 @@ function mapHerd(
 
 export function FarmDataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<FarmDataShape>(defaultData);
-  // Track farmId and userRole separately so they survive partial refreshes
   const farmIdRef = useRef<string | null>(null);
+
+  // Production: wipe any stale localStorage on mount so it can never bleed in
+  useEffect(() => {
+    if (!IS_DEMO_MODE) clearStoredFarm();
+  }, []);
 
   // Load from Supabase (authenticated users in production mode)
   const loadFromSupabase = useCallback(async () => {
