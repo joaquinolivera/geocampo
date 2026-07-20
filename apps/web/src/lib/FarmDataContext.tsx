@@ -3,10 +3,13 @@
 /**
  * @fileoverview FarmDataContext — provides farm data to all dashboard components.
  *
- * Priority:
- *  1. Supabase (real DB, when IS_DEMO_MODE=false and user authenticated)
- *  2. localStorage (user's real farm, saved via /setup wizard)
- *  3. Demo data (PASTURES, HERDS, … from data.ts)
+ * Production mode (IS_DEMO_MODE=false):
+ *  - All data comes from Supabase. No localStorage fallback.
+ *  - If the user has no session or no farm, state stays empty and
+ *    middleware redirects to /login or /setup.
+ *
+ * Demo mode (IS_DEMO_MODE=true, env vars missing):
+ *  - Uses demo seed data from data.ts.
  *
  * Components replace `import { PASTURES, HERDS } from '@/lib/data'`
  * with `const { PASTURES, HERDS } = useFarmData()`.
@@ -31,7 +34,6 @@ import {
   type GrassType,
   type WaterSupplyType,
 } from './data';
-import { loadStoredFarm } from './farm-store';
 import { getBrowserClient, IS_DEMO_MODE } from './supabase';
 
 export interface FarmDataShape {
@@ -49,7 +51,7 @@ export interface FarmDataShape {
   farmSlug: string | null;
   /** Current user's role on this farm */
   userRole: FarmRole;
-  /** Re-reads localStorage — call after any mutation (addWeightRecord, etc.) */
+  /** Re-reads from Supabase — call after any mutation (addWeightRecord, etc.) */
   refresh: () => void;
 }
 
@@ -157,51 +159,6 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<FarmDataShape>(defaultData);
   // Track farmId and userRole separately so they survive partial refreshes
   const farmIdRef = useRef<string | null>(null);
-
-  // Load from localStorage (offline / demo-cookie users)
-  const loadFromStorage = useCallback(() => {
-    const stored = loadStoredFarm();
-    if (!stored) return false;
-
-    setData((prev) => ({
-      ...prev,
-      DEMO_FARM: {
-        id: stored.id,
-        name: stored.name,
-        ownerName: stored.ownerName,
-        totalAreaHectares: stored.totalAreaHectares,
-        location: stored.location,
-      },
-      PASTURES: stored.pastures,
-      HERDS: stored.herds.map((h) => ({
-        ...h,
-        species: ((h as { species?: string }).species ?? 'bovino') as import('@/lib/data').HerdSpecies,
-        entryDate: typeof h.entryDate === 'string' ? new Date(h.entryDate) : h.entryDate,
-      })),
-      WEIGHTS: stored.weightRecords.map((w) => ({
-        ...w,
-        weighedAt: typeof w.weighedAt === 'string' ? new Date(w.weighedAt) : w.weighedAt,
-      })),
-      HEALTH_RECORDS: stored.healthRecords.map((r) => ({
-        ...r,
-        administeredAt: typeof r.administeredAt === 'string' ? new Date(r.administeredAt) : r.administeredAt,
-        nextDueDate: r.nextDueDate
-          ? (typeof r.nextDueDate === 'string' ? new Date(r.nextDueDate) : r.nextDueDate)
-          : null,
-      })),
-      MOVEMENTS: stored.movements.map((m) => ({
-        ...m,
-        movedAt: typeof m.movedAt === 'string' ? new Date(m.movedAt) : m.movedAt,
-      })),
-      INFRASTRUCTURE: stored.infrastructure,
-      isCustomFarm: true,
-      // localStorage users own their farm — grant owner role + farmId
-      userRole: 'owner' as import('./useRole').FarmRole,
-      farmId: stored.id,
-      farmSlug: (stored as { slug?: string }).slug ?? null,
-    }));
-    return true;
-  }, []);
 
   // Load from Supabase (authenticated users in production mode)
   const loadFromSupabase = useCallback(async () => {
@@ -344,31 +301,28 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     async function init() {
-        // In production mode, prefer Supabase; fall back to localStorage
       if (!IS_DEMO_MODE) {
-        const ok = await loadFromSupabase();
-        if (!ok) loadFromStorage();
-      } else {
-        loadFromStorage();
+        // Production: Supabase only. If no session/farm, state stays empty
+        // and middleware handles the redirect to /login or /setup.
+        await loadFromSupabase();
       }
+      // Demo mode: defaultData (seed data from data.ts) is already set via useState.
     }
     void init();
-  }, [loadFromSupabase, loadFromStorage]);
+  }, [loadFromSupabase]);
 
-  // refresh: re-runs both paths so mutations (weight, health, etc.) are reflected
+  // refresh: re-reads from Supabase after any mutation
   const refresh = useCallback(() => {
     if (!IS_DEMO_MODE) {
-      void loadFromSupabase().then((ok) => { if (!ok) loadFromStorage(); });
-    } else {
-      loadFromStorage();
+      void loadFromSupabase();
     }
-  }, [loadFromSupabase, loadFromStorage]);
+  }, [loadFromSupabase]);
 
   useEffect(() => {
     setData((prev) => ({ ...prev, refresh }));
   }, [refresh]);
 
-  // D4 — Real-time sync: subscribe to changes for the active farm
+  // D4 — Real-time sync: subscribe to changes for the active farm (production only)
   // Requires realtime enabled in Supabase dashboard for these tables:
   //   weight_records, health_records, movements, herds, pastures
   useEffect(() => {
