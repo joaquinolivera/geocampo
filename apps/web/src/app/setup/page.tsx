@@ -34,7 +34,7 @@ import {
   type HerdInput,
   type FarmInput,
 } from '@/lib/farm-store';
-import { setDemoSession } from '@/lib/supabase';
+import { setDemoSession, IS_DEMO_MODE } from '@/lib/supabase';
 import { type GrassType, type WaterSupplyType } from '@/lib/data';
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -313,9 +313,11 @@ export default function SetupPage() {
 
   // ── Save ─────────────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   async function handleSave() {
     setSaving(true);
+    setSaveError(null);
 
     const slug = farmName
       .toLowerCase()
@@ -324,45 +326,60 @@ export default function SetupPage() {
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
 
-    // Always save to localStorage first (works offline / demo mode)
-    const input: FarmInput = {
-      name: farmName.trim(),
-      ownerName: ownerName.trim(),
-      pastures,
-      herds: herds as HerdInput[],
-    };
-    saveStoredFarm(buildStoredFarm(input));
+    if (IS_DEMO_MODE) {
+      // Demo mode only: save to localStorage
+      const input: FarmInput = {
+        name: farmName.trim(),
+        ownerName: ownerName.trim(),
+        pastures,
+        herds: herds as HerdInput[],
+      };
+      saveStoredFarm(buildStoredFarm(input));
+      setDemoSession(
+        `${ownerName.trim().toLowerCase().replace(/\s+/g, '.')}@campo.local`,
+        slug,
+      );
+      setSaving(false);
+      router.push(`/${slug}`);
+      return;
+    }
 
-    // Store the real farm slug in the session cookie
-    setDemoSession(
-      `${ownerName.trim().toLowerCase().replace(/\s+/g, '.')}@campo.local`,
-      slug,
-    );
+    // Production: Supabase is the only source of truth
+    const { getBrowserClient } = await import('@/lib/supabase');
+    const client = getBrowserClient();
+    if (!client) {
+      setSaveError('No se pudo conectar con la base de datos.');
+      setSaving(false);
+      return;
+    }
+    const { data: { session } } = await client.auth.getSession();
+    if (!session?.access_token) {
+      router.push('/login');
+      return;
+    }
 
-    // If a Supabase user is logged in, also persist to the database
     try {
-      const { getBrowserClient } = await import('@/lib/supabase');
-      const client = getBrowserClient();
-      if (client) {
-        const { data: { session } } = await client.auth.getSession();
-        if (session?.access_token) {
-          const herdsWithIndex = (herds as HerdInput[]).map((h, i) => ({
-            ...h,
-            pastureIndex: i,
-          }));
-          await fetch('/api/farms', {
-            method:  'POST',
-            headers: {
-              'Content-Type':  'application/json',
-              'Authorization': `Bearer ${session.access_token}`,
-            },
-            body: JSON.stringify({ slug, name: farmName.trim(), pastures, herds: herdsWithIndex }),
-          });
-        }
+      const herdsWithIndex = (herds as HerdInput[]).map((h, i) => ({
+        ...h,
+        pastureIndex: i,
+      }));
+      const res = await fetch('/api/farms', {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ slug, name: farmName.trim(), pastures, herds: herdsWithIndex }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `HTTP ${res.status}`);
       }
     } catch (err) {
-      // Non-fatal — localStorage save still works
-      console.warn('[setup] Supabase save failed, using local data:', err);
+      console.error('[setup] save failed:', err);
+      setSaveError('Error al guardar la estancia. Verificá tu conexión e intentá de nuevo.');
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
@@ -924,6 +941,9 @@ export default function SetupPage() {
                   ) : '🌿 Guardar y abrir mi campo'}
                 </button>
               </div>
+              {saveError && (
+                <p className="text-red-400 text-xs mt-2 text-center">{saveError}</p>
+              )}
 
               {/* Mobile map */}
               <div className="lg:hidden h-56 mt-2">{mapPanel}</div>
