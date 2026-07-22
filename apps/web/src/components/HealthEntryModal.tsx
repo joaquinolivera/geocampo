@@ -5,14 +5,16 @@
  */
 
 import { useState } from 'react';
-import { addHealthRecord } from '@/lib/farm-store';
+import { healthDb } from '@/lib/db/health';
+import { useFarmData } from '@/lib/FarmDataContext';
 
-export type TreatmentType = 'vaccination' | 'deworming' | 'treatment' | 'checkup';
+// These match the DB enum: vaccination | deworming | checkup | surgery | medication | other
+export type TreatmentType = 'vaccination' | 'deworming' | 'medication' | 'checkup';
 
 const TREATMENT_LABELS: Record<TreatmentType, string> = {
   vaccination: 'Vacunación',
   deworming:   'Desparasitación',
-  treatment:   'Tratamiento',
+  medication:  'Tratamiento / Medicación',
   checkup:     'Control / Revisión',
 };
 
@@ -29,6 +31,7 @@ export default function HealthEntryModal({
   onClose,
   onSaved,
 }: HealthEntryModalProps) {
+  const { DEMO_FARM } = useFarmData();
   const today = new Date().toISOString().slice(0, 10);
 
   const [treatmentType, setTreatmentType] = useState<TreatmentType>('vaccination');
@@ -49,25 +52,24 @@ export default function HealthEntryModal({
     setSaving(true);
     setError(null);
 
-    const result = addHealthRecord(herdId, {
-      treatmentType,
-      productName: productName.trim() || undefined,
-      dosage: dosage.trim() || undefined,
-      administeredBy: administeredBy.trim(),
-      administeredAt: new Date(date),
-      nextDueDate: nextDueDate ? new Date(nextDueDate) : undefined,
-      notes: notes.trim() || undefined,
-    });
-
-    setSaving(false);
-
-    if (!result) {
-      setError('No se encontró el campo. Completá la configuración inicial primero.');
-      return;
+    try {
+      await healthDb.add(DEMO_FARM.id, {
+        herdId,
+        treatmentType: treatmentType as Parameters<typeof healthDb.add>[1]['treatmentType'],
+        productName: productName.trim() || undefined,
+        dosage: dosage.trim() || undefined,
+        administeredBy: administeredBy.trim(),
+        administeredAt: new Date(date),
+        nextDueDate: nextDueDate ? new Date(nextDueDate) : undefined,
+        notes: notes.trim() || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch {
+      setError('Error al guardar el registro. Intentá de nuevo.');
+    } finally {
+      setSaving(false);
     }
-
-    onSaved();
-    onClose();
   }
 
   return (

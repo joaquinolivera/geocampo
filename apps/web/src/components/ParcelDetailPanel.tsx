@@ -1,11 +1,21 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
+import Link from 'next/link';
 import { useFarmData } from '@/lib/FarmDataContext';
 import WeightEntryModal from '@/components/WeightEntryModal';
+import WeightGainChart from '@/components/WeightGainChart';
 import HealthEntryModal from '@/components/HealthEntryModal';
 import MoveHerdModal from '@/components/MoveHerdModal';
 import AddHerdModal from '@/components/AddHerdModal';
+import EditPastureModal from '@/components/EditPastureModal';
+import CattlePanel from '@/components/CattlePanel';
+import GrazingLogPanel from '@/components/GrazingLogPanel';
+import RainfallWidget from '@/components/RainfallWidget';
+import CattleDetailPanel from '@/components/CattleDetailPanel';
+import { removePasture } from '@/lib/farm-store';
+import { getBrowserClient } from '@/lib/supabase';
+import type { StoredCattle } from '@/lib/farm-store';
 import type { GrassType, WaterSupplyType } from '@/lib/data';
 import {
   buildLoadAlert,
@@ -23,6 +33,8 @@ import { useT } from '@/lib/i18n';
 interface ParcelDetailPanelProps {
   pastureId: string;
   onClose: () => void;
+  /** Called when the user wants to redraw this pasture's boundary on the map */
+  onStartRedraw?: (pastureId: string) => void;
 }
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
@@ -66,15 +78,40 @@ const WATER_LABELS: Record<WaterSupplyType, { label: string; icon: string }> = {
   none:      { label: 'Sin agua propia',    icon: '❌' },
 };
 
-export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPanelProps) {
+export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }: ParcelDetailPanelProps) {
   const { t } = useT();
-  const { PASTURES, HERDS, WEIGHTS, HEALTH_RECORDS, MOVEMENTS, refresh, isCustomFarm } = useFarmData();
+  const { DEMO_FARM, PASTURES, HERDS, WEIGHTS, HEALTH_RECORDS, MOVEMENTS, refresh, isCustomFarm } = useFarmData();
   const [showWeightModal, setShowWeightModal] = useState(false);
   const [showHealthModal, setShowHealthModal] = useState(false);
   const [showMoveModal, setShowMoveModal] = useState(false);
   const [showAddHerdModal, setShowAddHerdModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [selectedAnimal, setSelectedAnimal] = useState<StoredCattle | null>(null);
+  // Linked lote comercial for this herd (fetched from Supabase when available)
+  const [linkedLote, setLinkedLote] = useState<{ id: string; nombre: string; estado: string } | null>(null);
+
   const pasture = PASTURES.find((p) => p.id === pastureId);
   const herd = HERDS.find((h) => h.pastureId === pastureId);
+
+  // Fetch lote comercial linked to this herd (Supabase users only)
+  useEffect(() => {
+    setLinkedLote(null);
+    if (!herd) return;
+    const client = getBrowserClient();
+    if (!client) return;
+    void (async () => {
+      const { data } = await client
+        .from('lotes_comerciales')
+        .select('id, nombre, estado')
+        .eq('herd_id', herd.id)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (data) setLinkedLote(data as { id: string; nombre: string; estado: string });
+    })();
+  }, [herd?.id]);
 
   const weights = useMemo(
     () =>
@@ -172,6 +209,15 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
             >
               {healthScoreLabel}
             </div>
+            {isCustomFarm && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="text-muted hover:text-white transition-colors text-sm leading-none p-1"
+                title="Editar potrero"
+              >
+                ✏️
+              </button>
+            )}
             <button
               onClick={onClose}
               className="text-muted hover:text-white transition-colors text-xl leading-none p-1"
@@ -341,6 +387,8 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
                 <p className="text-muted text-sm text-center italic py-2">Sin pesajes registrados</p>
               )}
 
+              <WeightGainChart records={weights} />
+
               {/* Registrar pesaje button — only for real farms */}
               {isCustomFarm && (
                 <button
@@ -506,6 +554,116 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
           </Section>
         )}
 
+        {/* Phase G — Individual cattle (DIOB / SENACSA) */}
+        {herd && (
+          <Section title="Animales individuales (DIOB)">
+            <CattlePanel
+              herdId={herd.id}
+              herdName={herd.name}
+              farmId={DEMO_FARM.id}
+              isCustomFarm={isCustomFarm}
+              onAnimalClick={(animal) => setSelectedAnimal(animal)}
+            />
+          </Section>
+        )}
+
+        {/* Linked lote comercial */}
+        {linkedLote && (
+          <Section title="Lote comercial vinculado">
+            <Link
+              href={`/lotes/${linkedLote.id}`}
+              className="flex items-center gap-3 rounded-xl border border-surface2 px-4 py-3 hover:border-lime/30 transition-colors"
+              style={{ backgroundColor: 'rgba(255,255,255,0.03)' }}
+            >
+              <span className="text-xl">📦</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-white text-sm font-medium">{linkedLote.nombre}</p>
+                <p className="text-muted text-xs mt-0.5">
+                  Estado:{' '}
+                  <span className={linkedLote.estado === 'abierto' ? 'text-lime' : 'text-blue-300'}>
+                    {linkedLote.estado}
+                  </span>
+                </p>
+              </div>
+              <span className="text-muted text-xs">Ver →</span>
+            </Link>
+          </Section>
+        )}
+
+        {/* Rainfall log */}
+        <Section title="💧 Lluvia registrada">
+          <RainfallWidget pastureId={pastureId} compact />
+        </Section>
+
+        {/* Grazing rotation log */}
+        <Section title="Historial de pastoreo">
+          <GrazingLogPanel pastureId={pastureId} />
+        </Section>
+
+        {/* Delete / redraw pasture — only for real farms */}
+        {isCustomFarm && (
+          <Section title="Zona de peligro">
+            {onStartRedraw && (
+              <button
+                onClick={() => { onClose(); onStartRedraw(pastureId); }}
+                className="w-full mb-2 rounded-xl py-2.5 text-sm font-medium transition-all border border-dashed border-yellow-900 hover:border-yellow-500 text-yellow-700 hover:text-yellow-400"
+                style={{ backgroundColor: 'transparent' }}
+              >
+                🗺 Redibujar límite del potrero
+              </button>
+            )}
+            {!deleteConfirm ? (
+              <button
+                onClick={() => { setDeleteConfirm(true); setDeleteError(null); }}
+                className="w-full rounded-xl py-2.5 text-sm font-medium transition-all border border-dashed border-red-900 hover:border-red-500 text-red-700 hover:text-red-400"
+                style={{ backgroundColor: 'transparent' }}
+              >
+                🗑 Eliminar este potrero
+              </button>
+            ) : (
+              <div
+                className="rounded-xl border border-red-900 p-4 space-y-3"
+                style={{ backgroundColor: '#FF000010' }}
+              >
+                <p className="text-red-300 text-sm font-medium text-center">
+                  ¿Confirmar eliminación de <span className="font-bold">{pasture.name}</span>?
+                </p>
+                {deleteError && (
+                  <p role="alert" className="text-red-400 text-xs text-center">{deleteError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { setDeleteConfirm(false); setDeleteError(null); }}
+                    className="flex-1 rounded-xl py-2 text-sm text-muted border border-surface2 hover:text-white transition-colors"
+                    style={{ backgroundColor: '#0A0A0B' }}
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={() => {
+                      const result = removePasture(pasture.id);
+                      if (!result) {
+                        setDeleteError('No se encontró el potrero.');
+                        return;
+                      }
+                      if ('error' in result && result.error === 'has_herd') {
+                        setDeleteError('Este potrero tiene hacienda asignada. Mueva la hacienda antes de eliminarlo.');
+                        return;
+                      }
+                      refresh();
+                      onClose();
+                    }}
+                    className="flex-1 rounded-xl py-2 text-sm font-bold text-white transition-colors"
+                    style={{ backgroundColor: '#CC2222' }}
+                  >
+                    Eliminar
+                  </button>
+                </div>
+              </div>
+            )}
+          </Section>
+        )}
+
         {/* Pasture characteristics — only shown when richer metadata is present */}
         {(pasture.grassType || pasture.waterSupply || pasture.elevationM || pasture.notes) && (
           <Section title="Características del potrero">
@@ -585,6 +743,24 @@ export default function ParcelDetailPanel({ pastureId, onClose }: ParcelDetailPa
           pastureName={pasture.name}
           onClose={() => setShowAddHerdModal(false)}
           onSaved={() => { refresh(); }}
+        />
+      )}
+
+      {/* Edit pasture modal */}
+      {showEditModal && (
+        <EditPastureModal
+          pasture={pasture}
+          onClose={() => setShowEditModal(false)}
+          onSaved={() => { refresh(); }}
+        />
+      )}
+
+      {/* Phase G — cattle trazabilidad detail */}
+      {selectedAnimal && (
+        <CattleDetailPanel
+          animal={selectedAnimal}
+          onClose={() => setSelectedAnimal(null)}
+          onUpdate={() => { setSelectedAnimal(null); refresh(); }}
         />
       )}
     </div>

@@ -7,6 +7,7 @@
     "dev": "pnpm --filter mobile dev",
     "dev:web": "pnpm --filter mobile dev:web",
     "dev:dashboard": "pnpm --filter @geocampo/web dev",
+    "dev:landing": "pnpm --filter @geocampo/landing dev",
     "test": "jest && pnpm -r test",
     "test:schema": "jest tests/schema.test.ts",
     "test:watch": "jest --watch",

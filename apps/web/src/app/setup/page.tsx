@@ -14,6 +14,8 @@
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import Map, {
   Source,
   Layer,
@@ -32,7 +34,8 @@ import {
   type HerdInput,
   type FarmInput,
 } from '@/lib/farm-store';
-import { setDemoSession } from '@/lib/supabase';
+import { setDemoSession, IS_DEMO_MODE } from '@/lib/supabase';
+import { apiPath } from '@/lib/api';
 import { type GrassType, type WaterSupplyType } from '@/lib/data';
 
 const TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -141,6 +144,7 @@ function parseGeoJSON(raw: unknown): ParsedFeature[] {
 // ─── Main component ────────────────────────────────────────────────────────────
 
 export default function SetupPage() {
+  const router = useRouter();
   const mapRef = useRef<MapRef>(null);
 
   const [step, setStep] = useState(1);
@@ -243,7 +247,9 @@ export default function SetupPage() {
     if (draftPoints.length < 3) return;
     stopDrawing(); // sets ref synchronously — next map click is ignored
     const ring: [number, number][] = [...draftPoints, draftPoints[0]];
-    setDraft((d) => ({ ...d, coordinates: [ring] }));
+    const coords: [number, number][][] = [ring];
+    const areaHa = Math.round(polygonAreaHectares(coords) * 10) / 10;
+    setDraft((d) => ({ ...d, coordinates: coords, areaHectares: areaHa }));
     setDraftPoints([]);
   }
 
@@ -307,22 +313,78 @@ export default function SetupPage() {
   );
 
   // ── Save ─────────────────────────────────────────────────────────────────────
-  function handleSave() {
-    const input: FarmInput = {
-      name: farmName.trim(),
-      ownerName: ownerName.trim(),
-      pastures,
-      herds: herds as HerdInput[],
-    };
-    saveStoredFarm(buildStoredFarm(input));
-    setDemoSession(`${ownerName.trim().toLowerCase().replace(/\s+/g, '.')}@campo.local`);
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
+  async function handleSave() {
+    setSaving(true);
+    setSaveError(null);
+
     const slug = farmName
       .toLowerCase()
       .normalize('NFD')
       .replace(/[̀-ͯ]/g, '')
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '');
-    window.location.href = `/${slug}`;
+
+    if (IS_DEMO_MODE) {
+      // Demo mode only: save to localStorage
+      const input: FarmInput = {
+        name: farmName.trim(),
+        ownerName: ownerName.trim(),
+        pastures,
+        herds: herds as HerdInput[],
+      };
+      saveStoredFarm(buildStoredFarm(input));
+      setDemoSession(
+        `${ownerName.trim().toLowerCase().replace(/\s+/g, '.')}@campo.local`,
+        slug,
+      );
+      setSaving(false);
+      router.push(`/${slug}`);
+      return;
+    }
+
+    // Production: Supabase is the only source of truth
+    const { getBrowserClient } = await import('@/lib/supabase');
+    const client = getBrowserClient();
+    if (!client) {
+      setSaveError('No se pudo conectar con la base de datos.');
+      setSaving(false);
+      return;
+    }
+    const { data: { session } } = await client.auth.getSession();
+    if (!session?.access_token) {
+      router.push('/login');
+      return;
+    }
+
+    try {
+      const herdsWithIndex = (herds as HerdInput[]).map((h, i) => ({
+        ...h,
+        pastureIndex: i,
+      }));
+      const res = await fetch(apiPath('/api/farms'), {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${session.access_token}`,
+        },
+        body: JSON.stringify({ slug, name: farmName.trim(), pastures, herds: herdsWithIndex }),
+      });
+      if (!res.ok) {
+        const msg = await res.text();
+        throw new Error(msg || `HTTP ${res.status}`);
+      }
+    } catch (err) {
+      console.error('[setup] save failed:', err);
+      setSaveError('Error al guardar la estancia. Verificá tu conexión e intentá de nuevo.');
+      setSaving(false);
+      return;
+    }
+
+    setSaving(false);
+    router.push(`/${slug}`);
   }
 
   // ── Map GeoJSON for saved pastures ───────────────────────────────────────────
@@ -515,7 +577,7 @@ export default function SetupPage() {
       {/* ── Top bar ─────────────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-surface2">
         <button
-          onClick={() => { window.location.href = '/login'; }}
+          onClick={() => router.push('/login')}
           className="text-muted text-sm hover:text-white transition-colors"
         >
           ← Volver
@@ -625,12 +687,14 @@ export default function SetupPage() {
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label hint="opcional si importás GeoJSON">Superficie (ha)</Label>
-                    <input type="number" min={0.1} step={0.1} className={INPUT} value={draft.areaHectares ?? ''} onChange={(e) => setDraft((d) => ({ ...d, areaHectares: Number(e.target.value) }))} placeholder="25" />
-                  </div>
-                  <div>
-                    <Label hint="cabezas">Capacidad</Label>
+                  {draft.coordinates && draft.areaHectares && (
+                    <div className="flex items-center gap-2 rounded-xl border border-lime/20 bg-lime/5 px-3 py-2 text-lime text-xs col-span-1">
+                      <span>📐</span>
+                      <span>{draft.areaHectares} ha calculadas</span>
+                    </div>
+                  )}
+                  <div className={draft.coordinates && draft.areaHectares ? 'col-span-1' : 'col-span-2'}>
+                    <Label hint="cabezas">Capacidad de carga</Label>
                     <input type="number" min={1} className={INPUT} value={draft.carryingCapacity ?? ''} onChange={(e) => setDraft((d) => ({ ...d, carryingCapacity: Number(e.target.value) }))} placeholder="20" />
                   </div>
                 </div>
@@ -869,10 +933,18 @@ export default function SetupPage() {
 
               <div className="flex gap-3">
                 <button onClick={() => setStep(3)} className="flex-1 rounded-xl py-3 border border-surface2 text-white text-sm hover:bg-surface transition-colors">← Editar</button>
-                <button onClick={handleSave} className="flex-[2] rounded-xl py-3 font-bold text-charcoal text-sm hover:brightness-110 active:scale-[0.98] transition-all" style={{ backgroundColor: '#DEFF9A' }}>
-                  🌿 Guardar y abrir mi campo
+                <button onClick={handleSave} disabled={saving} className="flex-[2] rounded-xl py-3 font-bold text-charcoal text-sm hover:brightness-110 active:scale-[0.98] transition-all disabled:opacity-60" style={{ backgroundColor: '#DEFF9A' }}>
+                  {saving ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <span className="w-4 h-4 border-2 border-charcoal border-t-transparent rounded-full animate-spin" />
+                      Guardando…
+                    </span>
+                  ) : '🌿 Guardar y abrir mi campo'}
                 </button>
               </div>
+              {saveError && (
+                <p className="text-red-400 text-xs mt-2 text-center">{saveError}</p>
+              )}
 
               {/* Mobile map */}
               <div className="lg:hidden h-56 mt-2">{mapPanel}</div>

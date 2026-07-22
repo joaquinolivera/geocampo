@@ -3,33 +3,46 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --port 3001",
+    "dev": "next dev --port 3002",
     "build": "next build",
-    "start": "next start --port 3001",
+    "start": "next start --port 3002",
     "typecheck": "tsc --noEmit",
     "test": "jest --config jest.config.js --no-coverage",
-    "test:watch": "jest --config jest.config.js --watch"
+    "test:watch": "jest --config jest.config.js --watch",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "dependencies": {
     "@geocampo/i18n": "workspace:*",
     "@geocampo/shared": "workspace:*",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.0",
+    "jspdf": "^2.5.2",
+    "jspdf-autotable": "^3.8.4",
     "mapbox-gl": "^3.9.4",
     "next": "^15.1.0",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
-    "react-map-gl": "^8.0.4"
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "react-map-gl": "^8.0.4",
+    "recharts": "^3.8.1",
+    "stripe": "^17.7.0"
   },
   "devDependencies": {
-    "@types/mapbox-gl": "^3.4.1",
+    "@playwright/test": "^1.49.0",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^14.3.1",
+    "@testing-library/user-event": "^14.6.1",
+    "@types/geojson": "*",
+    "@types/jest": "^29.5.14",
     "@types/node": "^22.10.0",
-    "@types/react": "^18.3.12",
-    "@types/react-dom": "^18.3.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
     "autoprefixer": "^10.4.20",
+    "jest": "^29.7.0",
+    "jest-environment-jsdom": "^29.7.0",
     "postcss": "^8.4.47",
     "tailwindcss": "^3.4.17",
-    "typescript": "^5.7.0",
-    "@types/geojson": "*"
+    "ts-jest": "^29.2.0",
+    "typescript": "^5.7.0"
   }
 }

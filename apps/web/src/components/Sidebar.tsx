@@ -3,11 +3,13 @@
 import { useState } from 'react';
 import { type InfrastructureFeature } from '@/lib/data';
 import { useFarmData } from '@/lib/FarmDataContext';
+import OnboardingEmptyState from './OnboardingEmptyState';
 import type { SelectionState } from '@/lib/selection';
 import { useT } from '@/lib/i18n';
 import ParcelCard from './ParcelCard';
 import AlertsPanel from './AlertsPanel';
 import MovementsLog from './MovementsLog';
+import StockingChart from './StockingChart';
 
 const INFRA_COLOR: Record<InfrastructureFeature['type'], string> = {
   water: '#38BDF8',
@@ -34,11 +36,12 @@ type SidebarTab = 'potreros' | 'infraestructura';
 interface SidebarProps {
   selection: SelectionState;
   onSelect: (s: SelectionState) => void;
+  onStartDrawing?: () => void;
 }
 
-export default function Sidebar({ selection, onSelect }: SidebarProps) {
+export default function Sidebar({ selection, onSelect, onStartDrawing }: SidebarProps) {
   const { t } = useT();
-  const { PASTURES, HERDS, WEIGHTS, INFRASTRUCTURE } = useFarmData();
+  const { PASTURES, HERDS, WEIGHTS, INFRASTRUCTURE, isCustomFarm } = useFarmData();
   const [tab, setTab] = useState<SidebarTab>('potreros');
 
   const selectedPastureId = selection?.type === 'pasture' ? selection.id : null;
@@ -82,6 +85,11 @@ export default function Sidebar({ selection, onSelect }: SidebarProps) {
       <div className="flex-1 overflow-y-auto">
         {tab === 'potreros' ? (
           <>
+            {/* F1 — Onboarding empty state */}
+            {isCustomFarm && PASTURES.length === 0 && (
+              <OnboardingEmptyState onStartDrawing={onStartDrawing} />
+            )}
+
             <div className="px-4 pt-4 pb-2 space-y-3">
               {PASTURES.map((pasture) => {
                 const herd = HERDS.find((h) => h.pastureId === pasture.id);
@@ -105,6 +113,7 @@ export default function Sidebar({ selection, onSelect }: SidebarProps) {
               })}
             </div>
             <AlertsPanel onSelectPasture={(id) => onSelect({ type: 'pasture', id })} />
+            <StockingChart herds={HERDS} weights={WEIGHTS} />
             <MovementsLog />
           </>
         ) : (

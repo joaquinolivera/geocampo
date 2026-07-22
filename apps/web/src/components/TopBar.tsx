@@ -2,20 +2,26 @@
 
 import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { buildLoadAlert, getDueStatus } from '@/lib/alerts';
 import { IS_DEMO_MODE, clearDemoSession, getBrowserClient } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import { useFarmData } from '@/lib/FarmDataContext';
 import LanguageToggle from './LanguageToggle';
+import ExportMenu from './ExportMenu';
 
 interface TopBarProps {
   onLogout?: () => void;
+  onToggleERP?: () => void;
+  erpOpen?: boolean;
+  onToggleChat?: () => void;
+  chatOpen?: boolean;
 }
 
-export default function TopBar({ onLogout }: TopBarProps) {
+export default function TopBar({ onLogout, onToggleERP, erpOpen, onToggleChat, chatOpen }: TopBarProps) {
   const router = useRouter();
   const { t } = useT();
-  const { DEMO_FARM, HERDS, PASTURES, HEALTH_RECORDS } = useFarmData();
+  const { DEMO_FARM, HERDS, PASTURES, HEALTH_RECORDS, userRole } = useFarmData();
 
   const totalCattle = useMemo(
     () => HERDS.reduce((sum, h) => sum + h.cattleCount, 0),
@@ -64,14 +70,14 @@ export default function TopBar({ onLogout }: TopBarProps) {
           <span className="text-lime font-bold text-lg tracking-tight">GeoCampo</span>
         </div>
         <div className="h-4 w-px bg-surface2" />
-        <div>
-          <span className="text-white font-semibold text-sm">{DEMO_FARM.name}</span>
-          <span className="text-muted text-xs ml-2">{DEMO_FARM.ownerName}</span>
-        </div>
+        <a href="/farms" title="Cambiar campo" className="group flex items-baseline gap-2 hover:opacity-80 transition-opacity">
+          <span className="text-white font-semibold text-sm group-hover:text-lime transition-colors">{DEMO_FARM.name}</span>
+          <span className="text-muted text-xs">{DEMO_FARM.ownerName}</span>
+        </a>
       </div>
 
-      {/* Right: metrics + controls */}
-      <div className="flex items-center gap-3">
+      {/* Right: metrics + controls (hidden on small screens — MobileNav handles those) */}
+      <div className="hidden md:flex items-center gap-3">
         {/* Total cattle */}
         <Metric icon="🐄" value={totalCattle} label={t('topbar.cattle')} />
         <Divider />
@@ -87,35 +93,112 @@ export default function TopBar({ onLogout }: TopBarProps) {
           label={t('topbar.hectares')}
         />
 
-        {/* Alerts badge */}
-        {totalAlerts > 0 && (
+        {/* Alerts shortcut */}
+        <Divider />
+        <Link
+          href="/alertas"
+          className="text-xs px-2 py-1 rounded-lg border transition-colors"
+          style={{
+            borderColor: totalAlerts > 0 ? '#FF444440' : '#2A2A2B',
+            color:       totalAlerts > 0 ? '#FF4444'   : '#6A6A6B',
+            backgroundColor: totalAlerts > 0 ? '#FF444410' : 'transparent',
+          }}
+          title="Centro de alertas"
+        >
+          {totalAlerts > 0 ? `⚠️ ${totalAlerts}` : '✅'}
+        </Link>
+
+        {/* Feature nav — always visible */}
+        <Divider />
+        <nav className="flex items-center gap-1">
+          <Link href="/lotes" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Lotes Comerciales">
+            🐄 Lotes
+          </Link>
+          <Link href="/maquinaria" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Maquinaria">
+            🚜 Flota
+          </Link>
+          <Link href="/erp" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Dashboard ERP">
+            📊 ERP
+          </Link>
+          <Link href="/mercado" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Clima y precios">
+            🌤 Mercado
+          </Link>
+          <Link href="/movimientos" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Movimientos de hacienda">
+            ↗ Mov.
+          </Link>
+          <Link href="/veterinaria" className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2" title="Calendario sanitario">
+            💉 Vet.
+          </Link>
+          {onToggleERP && (
+            <button
+              onClick={onToggleERP}
+              className="text-xs px-2 py-1 rounded-lg border transition-colors"
+              style={{
+                borderColor: erpOpen ? '#DEFF9A' : '#2A2A2B',
+                color: erpOpen ? '#DEFF9A' : '#6A6A6B',
+                backgroundColor: erpOpen ? '#DEFF9A15' : 'transparent',
+              }}
+              title="Panel ERP lateral"
+            >
+              🏢
+            </button>
+          )}
+        </nav>
+
+        {/* AI Chat toggle */}
+        {onToggleChat && (
           <>
             <Divider />
-            <div className="flex items-center gap-2 bg-critical/10 border border-critical/30 rounded-lg px-3 py-1.5">
-              <span className="text-critical text-sm">⚠️</span>
-              <div>
-                <p className="text-critical font-bold text-sm leading-none">{totalAlerts}</p>
-                <p className="text-critical/70 text-[10px]">
-                  {totalAlerts === 1 ? t('topbar.alert') : t('topbar.alerts')}
-                </p>
-              </div>
-            </div>
+            <button
+              onClick={onToggleChat}
+              className="text-xs px-2 py-1 rounded-lg border transition-colors"
+              style={{
+                borderColor: chatOpen ? '#DEFF9A' : '#2A2A2B',
+                color: chatOpen ? '#DEFF9A' : '#6A6A6B',
+                backgroundColor: chatOpen ? '#DEFF9A15' : 'transparent',
+              }}
+              title="Asistente IA"
+            >
+              🤖 IA
+            </button>
           </>
         )}
 
-        {totalAlerts === 0 && (
+        {/* Team settings — owners only */}
+        {userRole === 'owner' && (
           <>
             <Divider />
-            <div className="flex items-center gap-2 bg-lime/10 border border-lime/20 rounded-lg px-3 py-1.5">
-              <span className="text-lime text-sm">✅</span>
-              <p className="text-lime text-xs font-medium">{t('topbar.allGood')}</p>
-            </div>
+            <Link
+              href="/team"
+              className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2"
+              title="Equipo"
+            >
+              👥 Equipo
+            </Link>
           </>
         )}
+
+        {/* CSV export */}
+        <Divider />
+        <ExportMenu />
 
         {/* Language toggle */}
         <Divider />
         <LanguageToggle />
+
+        {/* Account settings */}
+        {!IS_DEMO_MODE && (
+          <>
+            <Divider />
+            <Link
+              href="/account"
+              className="text-muted text-xs hover:text-white transition-colors px-2 py-1 rounded-lg hover:bg-surface2"
+              title="Mi cuenta"
+            >
+              ⚙️
+            </Link>
+          </>
+        )}
 
         {/* Logout */}
         <Divider />

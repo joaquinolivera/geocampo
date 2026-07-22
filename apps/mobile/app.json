@@ -26,6 +26,12 @@
         {
           "assets": ["./assets/fonts"]
         }
+      ],
+      [
+        "@rnmapbox/maps",
+        {
+          "RNMapboxMapsDownloadToken": "MAPBOX_SECRET_TOKEN_PLACEHOLDER"
+        }
       ]
     ],
     "experiments": {

@@ -11,7 +11,8 @@
  */
 
 import { useState } from 'react';
-import { addWeightRecord } from '@/lib/farm-store';
+import { weightsDb } from '@/lib/db/weights';
+import { useFarmData } from '@/lib/FarmDataContext';
 
 export interface WeightEntryModalProps {
   herdId: string;
@@ -26,6 +27,7 @@ export default function WeightEntryModal({
   onClose,
   onSaved,
 }: WeightEntryModalProps) {
+  const { DEMO_FARM } = useFarmData();
   const today = new Date().toISOString().slice(0, 10);
 
   const [date, setDate] = useState(today);
@@ -49,23 +51,22 @@ export default function WeightEntryModal({
     setSaving(true);
     setError(null);
 
-    const result = addWeightRecord(herdId, {
-      cattleCount: count,
-      averageWeightKg: weight,
-      weighedAt: new Date(date),
-      weighedBy: weighedBy.trim() || 'Usuario',
-      notes: notes.trim() || undefined,
-    });
-
-    setSaving(false);
-
-    if (!result) {
-      setError('No se encontró el campo. Completá la configuración inicial primero.');
-      return;
+    try {
+      await weightsDb.add(DEMO_FARM.id, {
+        herdId,
+        cattleCount: count,
+        averageWeightKg: weight,
+        weighedAt: new Date(date),
+        weighedBy: weighedBy.trim() || 'Usuario',
+        notes: notes.trim() || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch {
+      setError('Error al guardar el pesaje. Intentá de nuevo.');
+    } finally {
+      setSaving(false);
     }
-
-    onSaved();
-    onClose();
   }
 
   return (

@@ -13,6 +13,7 @@
  */
 
 import { useCallback, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 // react-map-gl v8: import from 'react-map-gl/mapbox' (mapbox-gl renderer)
 import Map, {
   Source,
@@ -29,6 +30,9 @@ import { useFarmData } from '@/lib/FarmDataContext';
 import { buildLoadAlert, loadStatusColor, calculateCapacityPercent } from '@/lib/alerts';
 import type { SelectionState } from '@/lib/selection';
 import { useT } from '@/lib/i18n';
+
+// Mapbox GL CSS — imported here (client component) so it never runs on the server
+import 'mapbox-gl/dist/mapbox-gl.css';
 
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 const MAP_STYLE = 'mapbox://styles/mapbox/satellite-streets-v12';
@@ -76,7 +80,8 @@ export default function FarmMap({
   onDrawClick,
 }: FarmMapProps) {
   const { t } = useT();
-  const { PASTURES, HERDS, INFRASTRUCTURE, DEMO_FARM } = useFarmData();
+  const { PASTURES, HERDS, INFRASTRUCTURE, DEMO_FARM, farmSlug } = useFarmData();
+  const router = useRouter();
   const mapRef = useRef<MapRef>(null);
   const [hoveredPastureId, setHoveredPastureId] = useState<string | null>(null);
 
@@ -208,6 +213,21 @@ export default function FarmMap({
     setHoveredPastureId(null);
   }, []);
 
+  // Double-click on a pasture → navigate into its detail page
+  const handleMapDblClick = useCallback(
+    (e: MapMouseEvent) => {
+      if (drawingMode) return;
+      const map = mapRef.current;
+      if (!map || !farmSlug) return;
+      const features = map.queryRenderedFeatures(e.point, { layers: ['pasture-fill'] });
+      if (features.length > 0) {
+        const pastureId = features[0].properties?.id as string | undefined;
+        if (pastureId) router.push(`/${farmSlug}/${pastureId}`);
+      }
+    },
+    [drawingMode, farmSlug, router]
+  );
+
   // No-token fallback
   if (!MAPBOX_TOKEN) {
     return (
@@ -265,6 +285,7 @@ export default function FarmMap({
         mapStyle={MAP_STYLE}
         initialViewState={{ longitude: DEMO_FARM.location[0], latitude: DEMO_FARM.location[1], zoom: 11.5 }}
         onClick={handleMapClick}
+        onDblClick={handleMapDblClick}
         onMouseMove={handleMouseMove}
         onMouseLeave={handleMouseLeave}
       >

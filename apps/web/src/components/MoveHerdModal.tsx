@@ -9,7 +9,7 @@
 
 import { useState } from 'react';
 import { useFarmData } from '@/lib/FarmDataContext';
-import { moveHerd } from '@/lib/farm-store';
+import { herdsDb } from '@/lib/db/herds';
 
 export interface MoveHerdModalProps {
   herdId: string;
@@ -46,22 +46,20 @@ export default function MoveHerdModal({
     setSaving(true);
     setError(null);
 
-    const result = moveHerd(herdId, {
-      toPastureId,
-      movedAt: new Date(date),
-      movedBy: movedBy.trim(),
-      notes: notes.trim() || undefined,
-    });
-
-    setSaving(false);
-
-    if (!result) {
+    try {
+      await herdsDb.move(herdId, {
+        toPastureId,
+        movedAt: new Date(date),
+        movedBy: movedBy.trim(),
+        notes: notes.trim() || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch {
       setError('No se pudo registrar el movimiento. Verificá la configuración del campo.');
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    onSaved();
-    onClose();
   }
 
   return (

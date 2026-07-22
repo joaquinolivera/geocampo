@@ -2,7 +2,8 @@
 
 import { Suspense, useState, useTransition } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { IS_DEMO_MODE, setDemoSession, getBrowserClient, DEMO_FARM_SLUG } from '@/lib/supabase';
+import Link from 'next/link';
+import { IS_DEMO_MODE, setDemoSession, DEMO_FARM_SLUG, getBrowserClient } from '@/lib/supabase';
 import { useT } from '@/lib/i18n';
 import LanguageToggle from '@/components/LanguageToggle';
 
@@ -14,9 +15,9 @@ function LoginForm() {
   const nextPath = params.get('next');
   const { t } = useT();
 
-  const [email, setEmail] = useState('');
+  const [email, setEmail]       = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError]       = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -28,7 +29,7 @@ function LoginForm() {
       return;
     }
 
-    startTransition(async () => {
+    startTransition(() => { void (async () => {
       if (IS_DEMO_MODE) {
         setDemoSession(email.trim());
         router.push(nextPath ?? `/${DEMO_FARM_SLUG}`);
@@ -37,23 +38,29 @@ function LoginForm() {
 
       const client = getBrowserClient();
       if (!client) {
-        setError(t('auth.errConfig'));
+        setError('Error de configuración: no se pudo crear el cliente Supabase.');
         return;
       }
 
-      const { error: authError } = await client.auth.signInWithPassword({
+      const { error: signInError } = await client.auth.signInWithPassword({
         email: email.trim(),
         password,
       });
 
-      if (authError) {
-        setError(t('auth.errCredentials'));
+      if (signInError) {
+        const msg = signInError.message.toLowerCase();
+        setError(
+          msg.includes('invalid') || msg.includes('credentials') || msg.includes('wrong')
+            ? 'Email o contraseña incorrectos.'
+            : signInError.message
+        );
         return;
       }
 
-      router.push(nextPath ?? '/');
-      router.refresh();
-    });
+      // Cookies are in document.cookie. Hard navigation so middleware
+      // reads them from the Cookie header on the very next request.
+      window.location.assign(nextPath ? `/app${nextPath}` : '/app');
+    })(); });
   };
 
   return (
@@ -124,6 +131,16 @@ function LoginForm() {
             </div>
           )}
 
+          {/* Forgot password */}
+          <div className="text-right -mt-1">
+            <Link
+              href="/forgot-password"
+              className="text-muted text-xs hover:text-lime transition-colors"
+            >
+              ¿Olvidaste tu contraseña?
+            </Link>
+          </div>
+
           <button
             type="submit"
             disabled={isPending}
@@ -141,8 +158,21 @@ function LoginForm() {
           </button>
         </form>
 
-        {/* Footer */}
-        <p className="text-muted text-xs text-center mt-6">
+        {/* Register link */}
+        {!IS_DEMO_MODE && (
+          <p className="text-muted text-sm text-center mt-5">
+            ¿No tenés cuenta?{' '}
+            <Link
+              href="/register"
+              className="text-lime font-semibold hover:brightness-110 transition-all"
+            >
+              Registrate
+            </Link>
+          </p>
+        )}
+
+        {/* Support footer */}
+        <p className="text-muted text-xs text-center mt-5">
           {t('auth.support')}{' '}
           <a
             href="mailto:soporte@geocampo.com"
@@ -154,12 +184,12 @@ function LoginForm() {
       </div>
 
       {/* Setup link */}
-      <a
+      <Link
         href="/setup"
         className="mt-4 text-lime/60 hover:text-lime text-xs underline-offset-2 hover:underline transition-colors"
       >
         🌿 Configurar mi campo por primera vez →
-      </a>
+      </Link>
 
       {/* Bottom tagline */}
       <p className="text-muted text-xs mt-4 text-center">

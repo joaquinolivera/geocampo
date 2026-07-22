@@ -35,10 +35,26 @@ yarn-error.log*
 
 # Testing
 coverage/
+playwright-report/
+test-results/
 
 # Temporary
 tmp/
 temp/
+_tmp_6_*
+
+# Stale root-level dirs (empty, safe to delete)
+/app/
+/assets/
+/src/
+
+# Duplicate lock files
+pnpm-lock 2.yaml
+pnpm-lock 3.yaml
+
+# Master docs (local reference only, not needed in repo)
+*.docx
+docx_to_md.py
 .npmrc
 .env.local
 .env*.local
