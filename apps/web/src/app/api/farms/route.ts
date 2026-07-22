@@ -77,46 +77,65 @@ export async function POST(req: NextRequest) {
     auth: { autoRefreshToken: false, persistSession: false },
   });
 
-  // Check if user already has a farm (idempotent)
+  // --- Upsert farm (create or update) ---
+  // If the user already has a farm, update its name/slug and replace all
+  // pastures + herds so re-running /setup always reflects the latest config.
   const { data: existing } = await admin
     .from('farms')
     .select('id, slug')
     .eq('owner_id', user.id)
     .single();
 
-  if (existing) {
-    return NextResponse.json({ farmId: existing.id, slug: existing.slug, existed: true });
-  }
-
-  // --- Insert farm ---
-  // Generate a unique slug if there's a collision
+  let farmId: string;
   let finalSlug = slug;
-  const { data: slugConflict } = await admin.from('farms').select('id').eq('slug', slug).single();
-  if (slugConflict) {
-    finalSlug = `${slug}-${Math.floor(Math.random() * 9000 + 1000)}`;
+
+  if (existing) {
+    farmId = existing.id;
+
+    // Generate a unique slug only if it conflicts with a *different* farm
+    const { data: slugConflict } = await admin
+      .from('farms').select('id').eq('slug', slug).neq('id', farmId).single();
+    if (slugConflict) {
+      finalSlug = `${slug}-${Math.floor(Math.random() * 9000 + 1000)}`;
+    }
+
+    await admin.from('farms').update({ name, slug: finalSlug }).eq('id', farmId);
+
+    // Wipe old pastures + herds so setup always reflects the new config
+    await admin.from('herds').delete().eq('farm_id', farmId);
+    await admin.from('pastures').delete().eq('farm_id', farmId);
+  } else {
+    // New farm — check slug collision
+    const { data: slugConflict } = await admin.from('farms').select('id').eq('slug', slug).single();
+    if (slugConflict) {
+      finalSlug = `${slug}-${Math.floor(Math.random() * 9000 + 1000)}`;
+    }
+
+    const { data: farm, error: farmError } = await admin
+      .from('farms')
+      .insert({ slug: finalSlug, name, owner_id: user.id })
+      .select('id')
+      .single();
+
+    if (farmError || !farm) {
+      console.error('[api/farms] farm insert error:', farmError);
+      return NextResponse.json({ error: farmError?.message ?? 'Farm insert failed' }, { status: 500 });
+    }
+
+    farmId = farm.id;
+
+    // Add owner to farm_members (accepted_at required — middleware filters on it)
+    const ownerEmail = user.email ?? 'unknown@geocampo.app';
+    await admin.from('farm_members').insert({
+      farm_id:     farmId,
+      user_id:     user.id,
+      role:        'owner',
+      email:       ownerEmail,
+      accepted_at: new Date().toISOString(),
+    });
   }
 
-  const { data: farm, error: farmError } = await admin
-    .from('farms')
-    .insert({ slug: finalSlug, name, owner_id: user.id })
-    .select('id')
-    .single();
-
-  if (farmError || !farm) {
-    console.error('[api/farms] farm insert error:', farmError);
-    return NextResponse.json({ error: farmError?.message ?? 'Farm insert failed' }, { status: 500 });
-  }
-
-  // --- Add owner to farm_members ---
-  // accepted_at MUST be set — middleware's farm lookup filters .not('accepted_at', 'is', null)
-  const ownerEmail = user.email ?? 'unknown@geocampo.app';
-  await admin.from('farm_members').insert({
-    farm_id:     farm.id,
-    user_id:     user.id,
-    role:        'owner',
-    email:       ownerEmail,
-    accepted_at: new Date().toISOString(),
-  });
+  // Use farmId from here on (replaces `farm.id` references below)
 
   // --- Insert pastures ---
   const pastureIds: (string | null)[] = [];
@@ -129,7 +148,7 @@ export async function POST(req: NextRequest) {
     const { data: pasture, error: pErr } = await admin
       .from('pastures')
       .insert({
-        farm_id:          farm.id,
+        farm_id:          farmId,
         name:             p.name,
         coordinates:      coords,
         area_hectares:    p.areaHectares ?? null,
@@ -150,7 +169,7 @@ export async function POST(req: NextRequest) {
   for (const h of herds) {
     const pastureId = pastureIds[h.pastureIndex] ?? null;
     await admin.from('herds').insert({
-      farm_id:      farm.id,
+      farm_id:      farmId,
       pasture_id:   pastureId,
       name:         h.name,
       cattle_count: h.cattleCount ?? 0,
@@ -159,7 +178,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ farmId: farm.id, slug: finalSlug });
+  return NextResponse.json({ farmId, slug: finalSlug });
 }
 
 /** Generate a tiny square polygon around a center point (fallback when no polygon drawn). */
