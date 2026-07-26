@@ -8,7 +8,7 @@
  */
 
 import { useState } from 'react';
-import { addPasture } from '@/lib/farm-store';
+import { pasturesDb } from '@/lib/db/pastures';
 import type { GrassType, WaterSupplyType } from '@/lib/data';
 
 const GRASS_OPTIONS: { value: GrassType; label: string }[] = [
@@ -37,6 +37,8 @@ export interface PastureFormModalProps {
   coordinates: [number, number][][];
   /** Approximate area calculated from polygon (shown as hint) */
   estimatedAreaHa: number;
+  /** Farm ID — required for Supabase insert in production */
+  farmId: string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -44,6 +46,7 @@ export interface PastureFormModalProps {
 export default function PastureFormModal({
   coordinates,
   estimatedAreaHa,
+  farmId,
   onClose,
   onSaved,
 }: PastureFormModalProps) {
@@ -63,24 +66,22 @@ export default function PastureFormModal({
     setSaving(true);
     setError(null);
 
-    const result = addPasture({
-      name: name.trim(),
-      carryingCapacity: Number(capacity),
-      coordinates,
-      grassType: grassType || undefined,
-      waterSupply: waterSupply || undefined,
-      notes: notes.trim() || undefined,
-    });
-
-    setSaving(false);
-
-    if (!result) {
+    try {
+      await pasturesDb.add(farmId, {
+        name: name.trim(),
+        carryingCapacity: Number(capacity),
+        coordinates,
+        grassType: grassType || undefined,
+        waterSupply: waterSupply || undefined,
+        notes: notes.trim() || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch {
       setError('No se pudo guardar el potrero. Verificá la configuración del campo.');
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    onSaved();
-    onClose();
   }
 
   return (

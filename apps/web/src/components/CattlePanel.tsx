@@ -1,22 +1,27 @@
 'use client';
 
 /**
- * CattlePanel — shows individual animals in a herd.
- * Lists chip IDs, visual tags, sex, breed, status.
- * Includes SINIP export download + add animal modal.
+ * CattlePanel — individual animal list for a herd.
+ * Production: reads from FarmDataContext (Supabase-backed).
+ * Demo mode: falls back to localStorage via farm-store.
  */
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
+import { useFarmData, type CattleRecord } from '@/lib/FarmDataContext';
+import { IS_DEMO_MODE } from '@/lib/supabase';
 import { listCattle, removeCattle } from '@/lib/farm-store';
 import type { StoredCattle } from '@/lib/farm-store';
 import AddCattleModal from './AddCattleModal';
+
+import type { HerdSpecies } from '@/lib/data';
 
 interface Props {
   herdId:        string;
   herdName:      string;
   farmId:        string;
+  herdSpecies:   HerdSpecies;
   isCustomFarm:  boolean;
-  onAnimalClick: (animal: StoredCattle) => void;
+  onAnimalClick: (animal: CattleRecord | StoredCattle) => void;
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -25,132 +30,183 @@ const STATUS_LABEL: Record<string, string> = {
   deceased:    'Fallecido',
   transferred: 'Transferido',
 };
-
 const STATUS_COLOR: Record<string, string> = {
-  active:      '#22c55e',
+  active:      '#84cc16',
   sold:        '#f59e0b',
   deceased:    '#6b7280',
   transferred: '#3b82f6',
 };
-
 const SEX_LABEL: Record<string, string> = {
   female:    '♀',
   male:      '♂',
   castrated: '✂',
 };
+const CATEGORY_LABEL: Record<string, string> = {
+  // Bovinos
+  vaca:       'Vaca',
+  vaquillona: 'Vaquillona',
+  ternera:    'Ternera',
+  toro:       'Toro',
+  novillo:    'Novillo',
+  ternero:    'Ternero',
+  torito:     'Torito',
+  // Ovinos
+  oveja:   'Oveja',
+  carnero: 'Carnero',
+  borrega: 'Borrega',
+  borrego: 'Borrego',
+  cordera: 'Cordera',
+  cordero: 'Cordero',
+  capon:   'Capón',
+};
 
-export default function CattlePanel({ herdId, herdName, farmId, isCustomFarm, onAnimalClick }: Props) {
-  const [cattle,       setCattle]       = useState<StoredCattle[]>([]);
-  const [showAdd,      setShowAdd]      = useState(false);
-  const [confirmDel,   setConfirmDel]   = useState<string | null>(null);
-  const [filter,       setFilter]       = useState('');
+const SPECIES_PANEL_CONFIG: Record<string, {
+  icon:        string;
+  panelTitle:  string;
+  exportLabel: string;
+  exportIcon:  string;
+}> = {
+  bovino: { icon: '🐄', panelTitle: 'Animales individuales (DIOB)',    exportLabel: 'SINIP', exportIcon: '📤' },
+  ovino:  { icon: '🐑', panelTitle: 'Animales individuales (Ovinos)',   exportLabel: 'SENASA', exportIcon: '📤' },
+  default:{ icon: '🐾', panelTitle: 'Animales individuales',            exportLabel: 'Exportar', exportIcon: '📤' },
+};
 
-  const reload = useCallback(() => {
-    setCattle(listCattle(herdId));
-  }, [herdId]);
+export default function CattlePanel({ herdId, herdName, farmId, herdSpecies, isCustomFarm, onAnimalClick }: Props) {
+  const panelCfg = SPECIES_PANEL_CONFIG[herdSpecies] ?? SPECIES_PANEL_CONFIG.default;
+  const { CATTLE, refresh } = useFarmData();
+  const [showAdd,    setShowAdd]    = useState(false);
+  const [confirmDel, setConfirmDel] = useState<string | null>(null);
+  const [filter,     setFilter]     = useState('');
+  const [deleting,   setDeleting]   = useState(false);
 
-  useEffect(() => { reload(); }, [reload]);
+  // In demo mode, fall back to localStorage
+  const demoCattle: StoredCattle[] = IS_DEMO_MODE ? listCattle(herdId) : [];
 
-  const filtered = cattle.filter((c) => {
+  // In production, filter context cattle by herd
+  const cattle: CattleRecord[] = IS_DEMO_MODE
+    ? []
+    : CATTLE.filter((c) => c.herdId === herdId);
+
+  // Unified count
+  const allCattle = IS_DEMO_MODE ? demoCattle : cattle;
+
+  const filtered = allCattle.filter((c) => {
     if (!filter) return true;
     const q = filter.toLowerCase();
+    if (IS_DEMO_MODE) {
+      const d = c as StoredCattle;
+      return (
+        d.chipId?.includes(q) ||
+        d.visualTagId?.toLowerCase().includes(q) ||
+        d.breed?.toLowerCase().includes(q)
+      );
+    }
+    const p = c as CattleRecord;
     return (
-      c.chipId?.includes(q)      ||
-      c.visualTagId?.toLowerCase().includes(q) ||
-      c.breed?.toLowerCase().includes(q)       ||
-      STATUS_LABEL[c.status]?.toLowerCase().includes(q)
+      p.chipId?.toLowerCase().includes(q) ||
+      p.visualTagId?.toLowerCase().includes(q) ||
+      p.breed?.toLowerCase().includes(q) ||
+      p.category?.toLowerCase().includes(q) ||
+      p.ownerName?.toLowerCase().includes(q)
     );
   });
 
-  const handleDelete = (id: string) => {
-    removeCattle(id);
-    reload();
-    setConfirmDel(null);
-  };
-
   const handleSINIPExport = () => {
     const rows: string[][] = [
-      ['chipId_DIOB', 'caravana_visual', 'sexo', 'raza', 'fecha_nacimiento', 'estado', 'lote', 'campo'],
+      ['caravana_visual', 'chipId_DIOB', 'categoria', 'sexo', 'raza', 'fecha_nacimiento', 'propietario', 'estado', 'lote', 'campo'],
     ];
-    cattle.forEach((c) => {
-      rows.push([
-        c.chipId       ?? '',
-        c.visualTagId  ?? '',
-        c.sex          ?? '',
-        c.breed        ?? '',
-        c.dob          ?? '',
-        c.status,
-        herdName,
-        farmId,
-      ]);
+    allCattle.forEach((c) => {
+      if (IS_DEMO_MODE) {
+        const d = c as StoredCattle;
+        rows.push([d.visualTagId ?? '', d.chipId ?? '', '', d.sex ?? '', d.breed ?? '', d.dob ?? '', '', d.status, herdName, farmId]);
+      } else {
+        const p = c as CattleRecord;
+        rows.push([p.visualTagId ?? '', p.chipId ?? '', CATEGORY_LABEL[p.category ?? ''] ?? '', p.sex ?? '', p.breed ?? '', p.dob ?? '', p.ownerName ?? '', p.status, herdName, farmId]);
+      }
     });
     const csv = rows.map((r) => r.map((v) => `"${v}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement('a');
     a.href     = url;
-    a.download = `SINIP_${herdName.replace(/\s/g,'_')}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.download = `SINIP_${herdName.replace(/\s/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
+  const handleDelete = useCallback(async (id: string) => {
+    if (IS_DEMO_MODE) {
+      removeCattle(id);
+      setConfirmDel(null);
+      return;
+    }
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/cattle/${id}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Error al eliminar');
+      refresh();
+    } catch {
+      // silent — could show a toast here
+    } finally {
+      setDeleting(false);
+      setConfirmDel(null);
+    }
+  }, [refresh]);
+
+  const handleSaved = useCallback(() => {
+    if (!IS_DEMO_MODE) refresh();
+  }, [refresh]);
+
+  const activeCount = allCattle.filter((c) => c.status === 'active').length;
+
   return (
-    <div style={{ marginTop: 16 }}>
+    <div className="mt-4">
       {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <span style={{ fontSize: 14, fontWeight: 600, color: '#e2e8f0' }}>
-            📋 Animales individuales
-          </span>
-          <span style={{ background: '#374151', borderRadius: 9999, padding: '1px 8px', fontSize: 11, color: '#9ca3af' }}>
-            {cattle.filter((c) => c.status === 'active').length} activos
-          </span>
+      <div className="flex items-center justify-between mb-2.5">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-200">{panelCfg.icon} {panelCfg.panelTitle}</span>
+          <span className="rounded-full bg-surface2 px-2 py-0.5 text-xs text-muted">{activeCount} activos</span>
         </div>
-        <div style={{ display: 'flex', gap: 6 }}>
-          {cattle.length > 0 && (
+        <div className="flex gap-1.5">
+          {allCattle.length > 0 && (
             <button
               onClick={handleSINIPExport}
-              title="Exportar CSV para SENACSA / SINIP"
-              style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(59,130,246,0.15)', border: '1px solid #3b82f6', color: '#60a5fa', fontSize: 11, cursor: 'pointer' }}
+              title={`Exportar CSV — ${panelCfg.exportLabel}`}
+              className="px-2.5 py-1 rounded-md text-xs border border-blue-500/50 bg-blue-500/10 text-blue-400 hover:bg-blue-500/20 transition-colors"
             >
-              📤 SINIP
+              {panelCfg.exportIcon} {panelCfg.exportLabel}
             </button>
           )}
           {isCustomFarm && (
             <button
               onClick={() => setShowAdd(true)}
-              style={{ padding: '4px 10px', borderRadius: 6, background: 'rgba(34,197,94,0.15)', border: '1px solid #22c55e', color: '#4ade80', fontSize: 11, cursor: 'pointer' }}
+              className="px-2.5 py-1 rounded-md text-xs border border-lime/40 bg-lime/10 text-lime hover:bg-lime/20 transition-colors"
             >
-              + Agregar animal
+              + Agregar
             </button>
           )}
         </div>
       </div>
 
       {/* Search */}
-      {cattle.length > 3 && (
+      {allCattle.length > 3 && (
         <input
           type="text"
-          placeholder="Buscar por chip, caravana, raza..."
+          placeholder="Buscar por caravana, chip, raza, propietario..."
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          style={{ width: '100%', padding: '6px 10px', borderRadius: 6, border: '1px solid #374151', background: '#111827', color: '#e5e7eb', fontSize: 12, marginBottom: 10, boxSizing: 'border-box' }}
+          className="w-full mb-2.5 px-3 py-1.5 rounded-lg border border-surface2 bg-surface text-sm text-white placeholder-muted focus:border-lime/40 focus:outline-none"
         />
       )}
 
       {/* Empty state */}
-      {cattle.length === 0 && (
-        <div style={{ textAlign: 'center', padding: '24px 0', color: '#6b7280', fontSize: 13 }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>🐄</div>
-          <p style={{ margin: 0 }}>No hay animales registrados en este lote.</p>
+      {allCattle.length === 0 && (
+        <div className="text-center py-6">
+          <div className="text-3xl mb-2">{panelCfg.icon}</div>
+          <p className="text-sm text-muted">No hay animales registrados en este lote.</p>
           {isCustomFarm && (
-            <p style={{ margin: '4px 0 0', fontSize: 12 }}>
-              Usá <strong style={{ color: '#4ade80' }}>+ Agregar animal</strong> para registrar el primer animal con chip DIOB.
-            </p>
-          )}
-          {!isCustomFarm && (
-            <p style={{ margin: '4px 0 0', fontSize: 11, color: '#4b5563' }}>
-              El tracking individual requiere un campo personalizado.
+            <p className="text-xs text-muted/70 mt-1">
+              Usá <strong className="text-lime">+ Agregar</strong> para registrar el primer animal.
             </p>
           )}
         </div>
@@ -158,85 +214,102 @@ export default function CattlePanel({ herdId, herdName, farmId, isCustomFarm, on
 
       {/* Animal list */}
       {filtered.length > 0 && (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {filtered.map((animal) => (
-            <div
-              key={animal.id}
-              onClick={() => onAnimalClick(animal)}
-              style={{
-                background: '#111827',
-                border: '1px solid #1f2937',
-                borderRadius: 8,
-                padding: '10px 12px',
-                cursor: 'pointer',
-                transition: 'border-color 0.15s',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-              onMouseEnter={(e) => (e.currentTarget.style.borderColor = '#374151')}
-              onMouseLeave={(e) => (e.currentTarget.style.borderColor = '#1f2937')}
-            >
-              <div style={{ flex: 1, minWidth: 0 }}>
-                {/* Chip + caravana */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                  {animal.chipId ? (
-                    <span style={{ fontFamily: 'monospace', fontSize: 12, color: '#60a5fa', background: 'rgba(59,130,246,0.1)', padding: '1px 6px', borderRadius: 4 }}>
-                      📡 {animal.chipId}
-                    </span>
-                  ) : (
-                    <span style={{ fontSize: 11, color: '#4b5563', fontStyle: 'italic' }}>sin chip</span>
-                  )}
-                  {animal.visualTagId && (
-                    <span style={{ fontSize: 12, color: '#f59e0b', background: 'rgba(245,158,11,0.1)', padding: '1px 6px', borderRadius: 4 }}>
-                      🏷 {animal.visualTagId}
-                    </span>
+        <div className="flex flex-col gap-1.5">
+          {filtered.map((animal) => {
+            const isDemo = IS_DEMO_MODE;
+            const vid    = isDemo ? (animal as StoredCattle).visualTagId  : (animal as CattleRecord).visualTagId;
+            const chip   = isDemo ? (animal as StoredCattle).chipId       : (animal as CattleRecord).chipId;
+            const sexVal = isDemo ? (animal as StoredCattle).sex          : (animal as CattleRecord).sex;
+            const breedV = isDemo ? (animal as StoredCattle).breed        : (animal as CattleRecord).breed;
+            const catRaw = isDemo ? null : ((animal as CattleRecord).sheepCategory ?? (animal as CattleRecord).category);
+            const catV   = catRaw;
+            const ownV   = isDemo ? null                                   : (animal as CattleRecord).ownerName;
+            const dobV   = isDemo ? (animal as StoredCattle).dob          : (animal as CattleRecord).dob;
+
+            return (
+              <div
+                key={animal.id}
+                onClick={() => onAnimalClick(animal)}
+                className="rounded-lg border border-surface2 px-3 py-2.5 cursor-pointer hover:border-surface transition-colors flex justify-between items-center"
+                style={{ backgroundColor: '#0d0d0e' }}
+              >
+                <div className="flex-1 min-w-0">
+                  {/* VID + chip row */}
+                  <div className="flex items-center gap-2 mb-1">
+                    {vid && (
+                      <span className="text-xs font-bold text-amber-400 bg-amber-400/10 px-2 py-0.5 rounded">
+                        🏷 {vid}
+                      </span>
+                    )}
+                    {chip && (
+                      <span className="text-xs font-mono text-blue-400 bg-blue-400/10 px-2 py-0.5 rounded">
+                        📡 {chip}
+                      </span>
+                    )}
+                    {!vid && !chip && (
+                      <span className="text-xs text-muted italic">sin identificación</span>
+                    )}
+                  </div>
+                  {/* Meta row */}
+                  <div className="flex flex-wrap gap-2 text-xs text-muted">
+                    {catV && <span className="font-medium text-gray-400">{CATEGORY_LABEL[catV] ?? catV}</span>}
+                    {sexVal && <span>{SEX_LABEL[sexVal] ?? sexVal}</span>}
+                    {breedV && <span>{breedV}</span>}
+                    {dobV && <span>nac. {dobV}</span>}
+                    {ownV && <span className="text-lime/70">👤 {ownV}</span>}
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 shrink-0">
+                  {/* Status badge */}
+                  <span
+                    className="text-xs font-semibold px-2 py-0.5 rounded-full border"
+                    style={{
+                      color: STATUS_COLOR[animal.status],
+                      backgroundColor: `${STATUS_COLOR[animal.status]}22`,
+                      borderColor: `${STATUS_COLOR[animal.status]}44`,
+                    }}
+                  >
+                    {STATUS_LABEL[animal.status]}
+                  </span>
+
+                  {/* Delete */}
+                  {isCustomFarm && (
+                    confirmDel === animal.id ? (
+                      <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
+                        <button
+                          onClick={() => handleDelete(animal.id)}
+                          disabled={deleting}
+                          className="px-2 py-1 rounded bg-critical text-white text-xs"
+                        >
+                          Eliminar
+                        </button>
+                        <button
+                          onClick={() => setConfirmDel(null)}
+                          className="px-2 py-1 rounded bg-surface2 text-muted text-xs"
+                        >
+                          No
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setConfirmDel(animal.id); }}
+                        className="text-muted hover:text-critical text-sm transition-colors"
+                      >
+                        🗑
+                      </button>
+                    )
                   )}
                 </div>
-                {/* Meta row */}
-                <div style={{ display: 'flex', gap: 8, fontSize: 11, color: '#6b7280' }}>
-                  {animal.sex    && <span>{SEX_LABEL[animal.sex] ?? animal.sex}</span>}
-                  {animal.breed  && <span>{animal.breed}</span>}
-                  {animal.dob    && <span>nac. {animal.dob}</span>}
-                </div>
               </div>
-
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                {/* Status badge */}
-                <span style={{
-                  fontSize: 10, fontWeight: 600, padding: '2px 6px', borderRadius: 9999,
-                  background: `${STATUS_COLOR[animal.status]}22`,
-                  color: STATUS_COLOR[animal.status],
-                  border: `1px solid ${STATUS_COLOR[animal.status]}44`,
-                }}>
-                  {STATUS_LABEL[animal.status]}
-                </span>
-
-                {/* Delete */}
-                {isCustomFarm && (
-                  confirmDel === animal.id ? (
-                    <div style={{ display: 'flex', gap: 4 }} onClick={(e) => e.stopPropagation()}>
-                      <button onClick={() => handleDelete(animal.id)} style={{ padding: '2px 8px', borderRadius: 4, background: '#ef4444', border: 'none', color: '#fff', fontSize: 11, cursor: 'pointer' }}>Eliminar</button>
-                      <button onClick={() => setConfirmDel(null)} style={{ padding: '2px 8px', borderRadius: 4, background: '#374151', border: 'none', color: '#aaa', fontSize: 11, cursor: 'pointer' }}>No</button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={(e) => { e.stopPropagation(); setConfirmDel(animal.id); }}
-                      style={{ background: 'none', border: 'none', color: '#4b5563', cursor: 'pointer', fontSize: 14, padding: '0 4px' }}
-                    >
-                      🗑
-                    </button>
-                  )
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
-      {/* No match for filter */}
-      {cattle.length > 0 && filtered.length === 0 && filter && (
-        <p style={{ color: '#6b7280', fontSize: 12, textAlign: 'center', padding: '12px 0' }}>
+      {/* No filter match */}
+      {allCattle.length > 0 && filtered.length === 0 && filter && (
+        <p className="text-muted text-xs text-center py-3">
           Sin resultados para &ldquo;{filter}&rdquo;
         </p>
       )}
@@ -244,10 +317,12 @@ export default function CattlePanel({ herdId, herdName, farmId, isCustomFarm, on
       {/* Add modal */}
       {showAdd && (
         <AddCattleModal
+          farmId={farmId}
           herdId={herdId}
           herdName={herdName}
+          herdSpecies={herdSpecies}
           onClose={() => setShowAdd(false)}
-          onSaved={reload}
+          onSaved={handleSaved}
         />
       )}
     </div>

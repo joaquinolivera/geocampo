@@ -1,61 +1,177 @@
 'use client';
 
 /**
- * AddCattleModal — register an individual animal with optional DIOB chip ID.
- * Works in demo mode (localStorage) and production (Supabase).
+ * AddCattleModal — register an individual animal (cattle OR sheep).
+ * Saves to Supabase via /api/cattle (production) or localStorage (demo mode).
+ * Fields adapt based on herdSpecies: bovino → cattle categories + DIOB chip
+ *                                    ovino  → sheep categories + visual tag
  */
 
 import { useState } from 'react';
+import { IS_DEMO_MODE } from '@/lib/supabase';
 import { addCattle } from '@/lib/farm-store';
-import type { AddCattleInput, CattleSex } from '@geocampo/shared';
+import type { CattleSex } from '@geocampo/shared';
+import type { HerdSpecies } from '@/lib/data';
 
 interface Props {
-  herdId:   string;
-  herdName: string;
-  onClose:  () => void;
-  onSaved:  () => void;
+  farmId:      string;
+  herdId:      string;
+  herdName:    string;
+  herdSpecies: HerdSpecies;
+  onClose:     () => void;
+  onSaved:     () => void;
 }
 
-const SEX_OPTIONS: { value: CattleSex; label: string }[] = [
-  { value: 'female',   label: '♀ Hembra' },
-  { value: 'male',     label: '♂ Macho' },
-  { value: 'castrated', label: '✂ Castrado' },
+// ─── Cattle (bovino) categories ───────────────────────────────────────────────
+const CATTLE_CATEGORY_OPTIONS = [
+  { value: 'vaca',       label: 'Vaca (adulta, 3+ partos)' },
+  { value: 'vaquillona', label: 'Vaquillona (1-2 partos o sin servicio)' },
+  { value: 'ternera',    label: 'Ternera (hembra cría)' },
+  { value: 'toro',       label: 'Toro (reproductor)' },
+  { value: 'novillo',    label: 'Novillo (castrado, engorde)' },
+  { value: 'ternero',    label: 'Ternero (macho cría)' },
+  { value: 'torito',     label: 'Torito (macho joven < 2 años)' },
 ];
 
-export default function AddCattleModal({ herdId, herdName, onClose, onSaved }: Props) {
-  const [chipId,      setChipId]      = useState('');
-  const [visualTagId, setVisualTagId] = useState('');
-  const [sex,         setSex]         = useState<CattleSex | ''>('');
-  const [breed,       setBreed]       = useState('');
-  const [dob,         setDob]         = useState('');
-  const [notes,       setNotes]       = useState('');
-  const [error,       setError]       = useState('');
-  const [saving,      setSaving]      = useState(false);
+// ─── Sheep (ovino) categories ─────────────────────────────────────────────────
+const SHEEP_CATEGORY_OPTIONS = [
+  { value: 'oveja',    label: 'Oveja (hembra adulta)' },
+  { value: 'carnero',  label: 'Carnero (reproductor)' },
+  { value: 'borrega',  label: 'Borrega (hembra joven < 18 meses)' },
+  { value: 'borrego',  label: 'Borrego (macho joven < 18 meses)' },
+  { value: 'cordera',  label: 'Cordera (cordero hembra)' },
+  { value: 'cordero',  label: 'Cordero (macho cría)' },
+  { value: 'capon',    label: 'Capón (castrado, engorde)' },
+];
+
+const ORIGEN_OPTIONS = [
+  { value: 'propio',   label: 'Propio (nacido en campo)' },
+  { value: 'comprado', label: 'Comprado' },
+  { value: 'donado',   label: 'Donado' },
+];
+
+// Species-specific labels
+const SPECIES_CONFIG: Record<string, {
+  icon:         string;
+  animalLabel:  string;
+  tagLabel:     string;
+  tagPlaceholder: string;
+  chipLabel:    string;
+  chipNote:     string;
+  categoryOptions: typeof CATTLE_CATEGORY_OPTIONS;
+  isCattle:     boolean;
+}> = {
+  bovino: {
+    icon:           '🐄',
+    animalLabel:    'bovino',
+    tagLabel:       'Caravana visual (VID)',
+    tagPlaceholder: 'Ej: A-1042',
+    chipLabel:      'Chip DIOB (IDE)',
+    chipNote:       'ISO 11784/11785 — 15 dígitos',
+    categoryOptions: CATTLE_CATEGORY_OPTIONS,
+    isCattle:       true,
+  },
+  ovino: {
+    icon:           '🐑',
+    animalLabel:    'ovino',
+    tagLabel:       'Caravana / Arete visual',
+    tagPlaceholder: 'Ej: O-0021',
+    chipLabel:      'Chip electrónico',
+    chipNote:       'Opcional — 15 dígitos',
+    categoryOptions: SHEEP_CATEGORY_OPTIONS,
+    isCattle:       false,
+  },
+};
+
+export default function AddCattleModal({ farmId, herdId, herdName, herdSpecies, onClose, onSaved }: Props) {
+  const cfg = SPECIES_CONFIG[herdSpecies] ?? SPECIES_CONFIG.bovino;
+  // Core identification
+  const [visualTagId,   setVisualTagId]   = useState('');
+  const [chipId,        setChipId]        = useState('');
+  // Zootechnical
+  const [sex,           setSex]           = useState<CattleSex | ''>('');
+  const [category,      setCategory]      = useState('');
+  const [breed,         setBreed]         = useState('');
+  const [dob,           setDob]           = useState('');
+  const [initialWeight, setInitialWeight] = useState('');
+  // Administrative
+  const [ownerName,     setOwnerName]     = useState('');
+  const [color,         setColor]         = useState('');
+  const [origen,        setOrigen]        = useState('');
+  const [padreVid,      setPadreVid]      = useState('');
+  const [madreVid,      setMadreVid]      = useState('');
+  const [notes,         setNotes]         = useState('');
+  // UI state
+  const [showAdvanced,  setShowAdvanced]  = useState(false);
+  const [error,         setError]         = useState('');
+  const [saving,        setSaving]        = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    if (!chipId && !visualTagId) {
-      setError('Ingresá al menos el chip DIOB o el número de caravana.');
+
+    const vid = visualTagId.trim();
+    const chip = chipId.replace(/\s/g, '');
+
+    if (!vid && !chip) {
+      setError(`Ingresá al menos ${cfg.tagLabel.toLowerCase()} o el ${cfg.chipLabel.toLowerCase()}.`);
       return;
     }
-    // Basic DIOB chip format validation (15 numeric digits)
-    if (chipId && !/^\d{15}$/.test(chipId.replace(/\s/g, ''))) {
-      setError('El chip DIOB debe tener 15 dígitos numéricos (ISO 11784/11785).');
+    if (chip && !/^\d{15}$/.test(chip)) {
+      setError(`El ${cfg.chipLabel.toLowerCase()} debe tener exactamente 15 dígitos numéricos.`);
       return;
     }
+
     setSaving(true);
     try {
-      const input: AddCattleInput = {
-        herdId,
-        chipId:      chipId.replace(/\s/g, '') || undefined,
-        visualTagId: visualTagId || undefined,
-        sex:         sex as CattleSex || undefined,
-        breed:       breed || undefined,
-        dob:         dob ? new Date(dob) : undefined,
-        notes:       notes || undefined,
-      };
-      addCattle(input);
+      if (IS_DEMO_MODE) {
+        // Demo: save to localStorage
+        addCattle({
+          herdId,
+          chipId:      chip || undefined,
+          visualTagId: vid || undefined,
+          sex:         (sex as CattleSex) || undefined,
+          breed:       breed || undefined,
+          dob:         dob ? new Date(dob) : undefined,
+          notes:       notes || undefined,
+        });
+        onSaved();
+        onClose();
+        return;
+      }
+
+      // Production: save to Supabase via API
+      const res = await fetch('/api/cattle', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          farm_id:             farmId,
+          herd_id:             herdId || undefined,
+          visual_tag_id:       vid || undefined,
+          chip_id:             chip || undefined,
+          species:             herdSpecies,
+          sex:                 sex || undefined,
+          // bovino: use category; ovino: use sheep_category
+          category:            cfg.isCattle  ? (category || undefined) : undefined,
+          sheep_category:      !cfg.isCattle ? (category || undefined) : undefined,
+          breed:               breed || undefined,
+          dob:                 dob || undefined,
+          initial_weight_kg:   initialWeight ? Number(initialWeight) : undefined,
+          initial_weight_date: new Date().toISOString().slice(0, 10),
+          owner_name:          ownerName || undefined,
+          color:               color || undefined,
+          origen:              origen || undefined,
+          padre_vid:           padreVid.trim() || undefined,
+          madre_vid:           madreVid.trim() || undefined,
+          notes:               notes || undefined,
+        }),
+      });
+
+      if (!res.ok) {
+        const json = await res.json() as { error?: string };
+        throw new Error(json.error ?? `Error ${res.status}`);
+      }
+
       onSaved();
       onClose();
     } catch (err: unknown) {
@@ -65,121 +181,220 @@ export default function AddCattleModal({ herdId, herdName, onClose, onSaved }: P
     }
   };
 
-  const inputClass = 'w-full rounded border border-gray-600 bg-gray-800 px-3 py-2 text-sm text-white placeholder-gray-500 focus:border-green-500 focus:outline-none';
-  const labelClass = 'block text-xs font-medium text-gray-400 mb-1';
+  const inputCls = 'w-full rounded-lg border border-surface2 bg-surface px-3 py-2 text-sm text-white placeholder-muted focus:border-lime/50 focus:outline-none focus:ring-1 focus:ring-lime/30';
+  const labelCls = 'block text-xs font-medium text-muted mb-1';
 
   return (
     <div
-      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 1000 }}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', zIndex: 1000 }}
       className="flex items-center justify-center p-4"
       onClick={(e) => e.target === e.currentTarget && onClose()}
     >
-      <div style={{ background: '#1a1a2e', border: '1px solid #333', borderRadius: 12, width: '100%', maxWidth: 460 }}>
+      <div
+        className="w-full max-w-md rounded-2xl border border-surface2 overflow-hidden"
+        style={{ backgroundColor: '#111112', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}
+      >
         {/* Header */}
-        <div style={{ padding: '16px 20px', borderBottom: '1px solid #333', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-surface2">
           <div>
-            <h3 style={{ color: '#fff', fontWeight: 600, fontSize: 15, margin: 0 }}>Registrar animal</h3>
-            <p style={{ color: '#888', fontSize: 12, margin: '2px 0 0' }}>Lote: {herdName}</p>
+            <h3 className="text-white font-semibold text-base">{cfg.icon} Registrar {cfg.animalLabel}</h3>
+            <p className="text-muted text-xs mt-0.5">Lote: {herdName}</p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: 20 }}>×</button>
+          <button onClick={onClose} className="text-muted hover:text-white text-2xl leading-none transition-colors">×</button>
         </div>
 
-        <form onSubmit={handleSubmit} style={{ padding: 20 }}>
-          {/* Chip ID */}
-          <div style={{ marginBottom: 14 }}>
-            <label className={labelClass}>
-              Chip DIOB (ISO 11784/11785) <span style={{ color: '#888' }}>— 15 dígitos</span>
-            </label>
-            <div style={{ position: 'relative' }}>
-              <input
-                type="text"
-                placeholder="982 000 123 456 789"
-                value={chipId}
-                onChange={(e) => setChipId(e.target.value)}
-                maxLength={17}
-                className={inputClass}
-                style={{ fontFamily: 'monospace', letterSpacing: '0.05em' }}
-              />
-              <span style={{ position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 16 }}>📡</span>
+        <form onSubmit={handleSubmit} className="overflow-y-auto p-5 space-y-4">
+
+          {/* ── Identification ────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-semibold text-lime/70 uppercase tracking-wide mb-3">Identificación</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className={labelCls}>{cfg.tagLabel} *</label>
+                <input
+                  type="text"
+                  placeholder={cfg.tagPlaceholder}
+                  value={visualTagId}
+                  onChange={(e) => setVisualTagId(e.target.value)}
+                  className={inputCls}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className={labelCls}>{cfg.chipLabel}</label>
+                <input
+                  type="text"
+                  placeholder={cfg.chipNote}
+                  value={chipId}
+                  onChange={(e) => setChipId(e.target.value)}
+                  maxLength={17}
+                  className={inputCls}
+                  style={{ fontFamily: 'monospace' }}
+                />
+              </div>
             </div>
-            <p style={{ color: '#555', fontSize: 11, marginTop: 3 }}>Escaneá el microchip o ingresalo manualmente</p>
           </div>
 
-          {/* Visual tag */}
-          <div style={{ marginBottom: 14 }}>
-            <label className={labelClass}>Caravana visual (oreja derecha)</label>
-            <input
-              type="text"
-              placeholder="Ej: A-1042"
-              value={visualTagId}
-              onChange={(e) => setVisualTagId(e.target.value)}
-              className={inputClass}
-            />
-          </div>
-
-          {/* Sex + Breed row */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 14 }}>
+          {/* ── Zootechnical ──────────────────────────────────── */}
+          <div>
+            <p className="text-xs font-semibold text-lime/70 uppercase tracking-wide mb-3">Datos zootécnicos</p>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className={labelCls}>Categoría *</label>
+                <select value={category} onChange={(e) => setCategory(e.target.value)} className={inputCls}>
+                  <option value="">— seleccionar —</option>
+                  {cfg.categoryOptions.map((o) => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className={labelCls}>Sexo</label>
+                <select value={sex} onChange={(e) => setSex(e.target.value as CattleSex | '')} className={inputCls}>
+                  <option value="">— seleccionar —</option>
+                  <option value="female">♀ Hembra</option>
+                  <option value="male">♂ Macho</option>
+                  <option value="castrated">✂ Castrado</option>
+                </select>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className={labelCls}>Raza</label>
+                <input
+                  type="text"
+                  placeholder="Ej: Nelore, Brangus"
+                  value={breed}
+                  onChange={(e) => setBreed(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Fecha de nacimiento</label>
+                <input
+                  type="date"
+                  value={dob}
+                  onChange={(e) => setDob(e.target.value)}
+                  max={new Date().toISOString().slice(0, 10)}
+                  className={inputCls}
+                />
+              </div>
+            </div>
             <div>
-              <label className={labelClass}>Sexo</label>
-              <select value={sex} onChange={(e) => setSex(e.target.value as CattleSex | '')} className={inputClass}>
-                <option value="">— seleccionar —</option>
-                {SEX_OPTIONS.map((o) => (
-                  <option key={o.value} value={o.value}>{o.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className={labelClass}>Raza</label>
+              <label className={labelCls}>Peso inicial (kg)</label>
               <input
-                type="text"
-                placeholder="Ej: Nelore, Brangus"
-                value={breed}
-                onChange={(e) => setBreed(e.target.value)}
-                className={inputClass}
+                type="number"
+                min="1"
+                max="1500"
+                step="0.5"
+                placeholder="Ej: 180"
+                value={initialWeight}
+                onChange={(e) => setInitialWeight(e.target.value)}
+                className={inputCls}
               />
+              <p className="text-xs text-muted mt-1">Se registra como primer pesaje</p>
             </div>
           </div>
 
-          {/* Date of birth */}
-          <div style={{ marginBottom: 14 }}>
-            <label className={labelClass}>Fecha de nacimiento</label>
-            <input
-              type="date"
-              value={dob}
-              onChange={(e) => setDob(e.target.value)}
-              max={new Date().toISOString().slice(0, 10)}
-              className={inputClass}
-            />
-          </div>
+          {/* ── Advanced (collapsible) ────────────────────────── */}
+          <button
+            type="button"
+            onClick={() => setShowAdvanced((v) => !v)}
+            className="text-xs text-lime/60 hover:text-lime transition-colors flex items-center gap-1"
+          >
+            {showAdvanced ? '▾' : '▸'} {showAdvanced ? 'Ocultar' : 'Mostrar'} campos avanzados
+          </button>
 
-          {/* Notes */}
-          <div style={{ marginBottom: 16 }}>
-            <label className={labelClass}>Notas</label>
-            <textarea
-              placeholder="Observaciones, marcas adicionales..."
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              rows={2}
-              className={inputClass}
-              style={{ resize: 'none' }}
-            />
-          </div>
-
-          {error && (
-            <div style={{ background: 'rgba(255,68,68,0.15)', border: '1px solid #ff4444', borderRadius: 6, padding: '8px 12px', color: '#ff6666', fontSize: 12, marginBottom: 12 }}>
-              {error}
+          {showAdvanced && (
+            <div className="space-y-3 pt-1">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Propietario / Inversor</label>
+                  <input
+                    type="text"
+                    placeholder="Nombre del dueño"
+                    value={ownerName}
+                    onChange={(e) => setOwnerName(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Origen</label>
+                  <select value={origen} onChange={(e) => setOrigen(e.target.value)} className={inputCls}>
+                    <option value="">— seleccionar —</option>
+                    {ORIGEN_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className={labelCls}>Caravana padre (VID)</label>
+                  <input
+                    type="text"
+                    placeholder="VID del toro"
+                    value={padreVid}
+                    onChange={(e) => setPadreVid(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+                <div>
+                  <label className={labelCls}>Caravana madre (VID)</label>
+                  <input
+                    type="text"
+                    placeholder="VID de la madre"
+                    value={madreVid}
+                    onChange={(e) => setMadreVid(e.target.value)}
+                    className={inputCls}
+                  />
+                </div>
+              </div>
+              <div>
+                <label className={labelCls}>Color / Pelaje</label>
+                <input
+                  type="text"
+                  placeholder="Ej: colorado, negro, overo"
+                  value={color}
+                  onChange={(e) => setColor(e.target.value)}
+                  className={inputCls}
+                />
+              </div>
+              <div>
+                <label className={labelCls}>Notas</label>
+                <textarea
+                  placeholder="Observaciones adicionales..."
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  rows={2}
+                  className={inputCls}
+                  style={{ resize: 'none' }}
+                />
+              </div>
             </div>
           )}
 
-          {/* Buttons */}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-            <button type="button" onClick={onClose} style={{ padding: '8px 16px', borderRadius: 6, border: '1px solid #444', background: 'transparent', color: '#aaa', cursor: 'pointer', fontSize: 13 }}>
+          {/* ── Error ─────────────────────────────────────────── */}
+          {error && (
+            <div className="rounded-lg border border-critical/30 bg-critical/10 px-4 py-3">
+              <p className="text-critical text-sm">{error}</p>
+            </div>
+          )}
+
+          {/* ── Buttons ───────────────────────────────────────── */}
+          <div className="flex gap-3 justify-end pt-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-xl border border-surface2 text-muted text-sm hover:text-white transition-colors"
+            >
               Cancelar
             </button>
             <button
               type="submit"
               disabled={saving}
-              style={{ padding: '8px 20px', borderRadius: 6, background: saving ? '#555' : '#22c55e', color: '#fff', border: 'none', cursor: saving ? 'not-allowed' : 'pointer', fontSize: 13, fontWeight: 600 }}
+              className="px-5 py-2 rounded-xl font-semibold text-sm text-charcoal disabled:opacity-60 disabled:cursor-not-allowed hover:brightness-110 transition-all"
+              style={{ backgroundColor: '#DEFF9A' }}
             >
               {saving ? 'Guardando...' : '💾 Registrar animal'}
             </button>

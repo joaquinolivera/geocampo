@@ -9,6 +9,7 @@
 
 import { useState } from 'react';
 import { addHerd } from '@/lib/farm-store';
+import { IS_DEMO_MODE } from '@/lib/supabase';
 import type { HerdSpecies } from '@/lib/data';
 
 const SPECIES_OPTIONS: { value: HerdSpecies; label: string; icon: string; breedPlaceholder: string }[] = [
@@ -30,8 +31,10 @@ const COUNT_LABEL: Record<HerdSpecies, string> = {
 };
 
 export interface AddHerdModalProps {
-  pastureId: string;
+  pastureId:  string;
   pastureName: string;
+  /** farmId is required in production to POST to /api/herds */
+  farmId?:    string;
   onClose: () => void;
   onSaved: () => void;
 }
@@ -39,6 +42,7 @@ export interface AddHerdModalProps {
 export default function AddHerdModal({
   pastureId,
   pastureName,
+  farmId,
   onClose,
   onSaved,
 }: AddHerdModalProps) {
@@ -65,24 +69,53 @@ export default function AddHerdModal({
     setSaving(true);
     setError(null);
 
-    const result = addHerd({
-      pastureId,
-      name: name.trim(),
-      cattleCount: Number(cattleCount),
-      breed: breed.trim(),
-      species,
-      entryDate: new Date(entryDate),
-    });
+    try {
+      if (IS_DEMO_MODE) {
+        // Demo: localStorage fallback
+        const result = addHerd({
+          pastureId,
+          name: name.trim(),
+          cattleCount: Number(cattleCount),
+          breed: breed.trim(),
+          species,
+          entryDate: new Date(entryDate),
+        });
+        if (!result) {
+          setError('No se encontró el potrero. Verificá la configuración del campo.');
+          return;
+        }
+      } else {
+        // Production: save to Supabase via API
+        if (!farmId) {
+          setError('ID del campo no disponible. Recargá la página e intentá nuevamente.');
+          return;
+        }
+        const res = await fetch('/api/herds', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            farm_id:      farmId,
+            pasture_id:   pastureId,
+            name:         name.trim(),
+            species,
+            breed:        breed.trim(),
+            cattle_count: Number(cattleCount),
+            entry_date:   entryDate,
+          }),
+        });
+        if (!res.ok) {
+          const json = await res.json() as { error?: string };
+          throw new Error(json.error ?? `Error ${res.status}`);
+        }
+      }
 
-    setSaving(false);
-
-    if (!result) {
-      setError('No se encontró el potrero. Verificá la configuración del campo.');
-      return;
+      onSaved();
+      onClose();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Error al guardar. Intentá nuevamente.');
+    } finally {
+      setSaving(false);
     }
-
-    onSaved();
-    onClose();
   }
 
   return (

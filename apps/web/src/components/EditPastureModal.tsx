@@ -6,7 +6,7 @@
  */
 
 import { useState } from 'react';
-import { updatePasture } from '@/lib/farm-store';
+import { pasturesDb } from '@/lib/db/pastures';
 import type { Pasture, GrassType, WaterSupplyType } from '@/lib/data';
 
 const GRASS_OPTIONS: { value: GrassType; label: string }[] = [
@@ -53,23 +53,21 @@ export default function EditPastureModal({ pasture, onClose, onSaved }: EditPast
     setSaving(true);
     setError(null);
 
-    const result = updatePasture(pasture.id, {
-      name: name.trim(),
-      carryingCapacity: Number(capacity),
-      grassType: grassType || undefined,
-      waterSupply: waterSupply || undefined,
-      notes: notes.trim() || undefined,
-    });
-
-    setSaving(false);
-
-    if (!result) {
+    try {
+      await pasturesDb.update(pasture.id, {
+        name: name.trim(),
+        carryingCapacity: Number(capacity),
+        grassType: grassType || undefined,
+        waterSupply: waterSupply || undefined,
+        notes: notes.trim() || undefined,
+      });
+      onSaved();
+      onClose();
+    } catch {
       setError('No se pudo actualizar el potrero.');
-      return;
+    } finally {
+      setSaving(false);
     }
-
-    onSaved();
-    onClose();
   }
 
   return (

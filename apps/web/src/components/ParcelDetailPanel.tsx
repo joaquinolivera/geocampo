@@ -13,9 +13,10 @@ import CattlePanel from '@/components/CattlePanel';
 import GrazingLogPanel from '@/components/GrazingLogPanel';
 import RainfallWidget from '@/components/RainfallWidget';
 import CattleDetailPanel from '@/components/CattleDetailPanel';
-import { removePasture } from '@/lib/farm-store';
+import { pasturesDb } from '@/lib/db/pastures';
 import { getBrowserClient } from '@/lib/supabase';
 import type { StoredCattle } from '@/lib/farm-store';
+import type { CattleRecord } from '@/lib/FarmDataContext';
 import type { GrassType, WaterSupplyType } from '@/lib/data';
 import {
   buildLoadAlert,
@@ -88,7 +89,8 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
   const [showEditModal, setShowEditModal] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
-  const [selectedAnimal, setSelectedAnimal] = useState<StoredCattle | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [selectedAnimal, setSelectedAnimal] = useState<CattleRecord | StoredCattle | null>(null);
   // Linked lote comercial for this herd (fetched from Supabase when available)
   const [linkedLote, setLinkedLote] = useState<{ id: string; nombre: string; estado: string } | null>(null);
 
@@ -142,6 +144,25 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
       }),
     [MOVEMENTS, pastureId, pasture?.name]
   );
+
+  async function handleDeletePasture() {
+    if (!pasture) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const result = await pasturesDb.remove(pasture.id);
+      if (result && 'error' in result && result.error === 'has_herd') {
+        setDeleteError('Este potrero tiene hacienda asignada. Mueva la hacienda antes de eliminarlo.');
+        return;
+      }
+      refresh();
+      onClose();
+    } catch {
+      setDeleteError('No se pudo eliminar el potrero.');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   if (!pasture) return null;
 
@@ -235,15 +256,22 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
           <Section title={t('detail.currentHerd')}>
             <div className="bg-surface rounded-xl p-4 space-y-3">
               <div>
-                <p className="text-white font-bold text-base">{herd.name}</p>
-                <p className="text-muted text-sm">
-                  {herd.species && herd.species !== 'bovino' ? (
-                    <span>
-                      {herd.species === 'ovino' ? '🐑 ' : herd.species === 'caprino' ? '🐐 ' : herd.species === 'equino' ? '🐎 ' : herd.species === 'porcino' ? '🐷 ' : '🐾 '}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-white font-bold text-base">{herd.name}</p>
+                  {herd.species && (
+                    <span className="text-xs px-2 py-0.5 rounded-full border"
+                      style={{ borderColor: '#2A2A2B', color: '#94a3b8', backgroundColor: '#1A1A1B' }}
+                    >
+                      {herd.species === 'bovino'  ? '🐄 Bovinos'
+                        : herd.species === 'ovino'   ? '🐑 Ovinos'
+                        : herd.species === 'caprino' ? '🐐 Caprinos'
+                        : herd.species === 'equino'  ? '🐎 Equinos'
+                        : herd.species === 'porcino' ? '🐷 Porcinos'
+                        : '🐾 Otro'}
                     </span>
-                  ) : null}
-                  {herd.breed}
-                </p>
+                  )}
+                </div>
+                <p className="text-muted text-sm mt-0.5">{herd.breed}</p>
               </div>
 
               {/* Stocking bar */}
@@ -554,17 +582,16 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
           </Section>
         )}
 
-        {/* Phase G — Individual cattle (DIOB / SENACSA) */}
-        {herd && (
-          <Section title="Animales individuales (DIOB)">
-            <CattlePanel
-              herdId={herd.id}
-              herdName={herd.name}
-              farmId={DEMO_FARM.id}
-              isCustomFarm={isCustomFarm}
-              onAnimalClick={(animal) => setSelectedAnimal(animal)}
-            />
-          </Section>
+        {/* Phase G — Individual animal tracking (bovino + ovino only) */}
+        {herd && (herd.species === 'bovino' || herd.species === 'ovino' || !herd.species) && (
+          <CattlePanel
+            herdId={herd.id}
+            herdName={herd.name}
+            farmId={DEMO_FARM.id}
+            herdSpecies={herd.species ?? 'bovino'}
+            isCustomFarm={isCustomFarm}
+            onAnimalClick={(animal) => setSelectedAnimal(animal)}
+          />
         )}
 
         {/* Linked lote comercial */}
@@ -640,23 +667,12 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
                     Cancelar
                   </button>
                   <button
-                    onClick={() => {
-                      const result = removePasture(pasture.id);
-                      if (!result) {
-                        setDeleteError('No se encontró el potrero.');
-                        return;
-                      }
-                      if ('error' in result && result.error === 'has_herd') {
-                        setDeleteError('Este potrero tiene hacienda asignada. Mueva la hacienda antes de eliminarlo.');
-                        return;
-                      }
-                      refresh();
-                      onClose();
-                    }}
-                    className="flex-1 rounded-xl py-2 text-sm font-bold text-white transition-colors"
+                    onClick={() => void handleDeletePasture()}
+                    disabled={deleting}
+                    className="flex-1 rounded-xl py-2 text-sm font-bold text-white transition-colors disabled:opacity-60"
                     style={{ backgroundColor: '#CC2222' }}
                   >
-                    Eliminar
+                    {deleting ? 'Eliminando...' : 'Eliminar'}
                   </button>
                 </div>
               </div>
@@ -741,6 +757,7 @@ export default function ParcelDetailPanel({ pastureId, onClose, onStartRedraw }:
         <AddHerdModal
           pastureId={pastureId}
           pastureName={pasture.name}
+          farmId={DEMO_FARM.id}
           onClose={() => setShowAddHerdModal(false)}
           onSaved={() => { refresh(); }}
         />

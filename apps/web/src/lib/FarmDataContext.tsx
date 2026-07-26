@@ -37,6 +37,35 @@ import {
 import { getBrowserClient, IS_DEMO_MODE } from './supabase';
 import { clearStoredFarm } from './farm-store';
 
+// ─── Cattle shape (production) ────────────────────────────────────────────────
+// This mirrors the `cattle` table + new columns from migration 014.
+
+export interface CattleRecord {
+  id:            string;
+  farmId:        string;
+  herdId:        string | null;
+  visualTagId:   string | null;
+  chipId:        string | null;
+  sex:           'male' | 'female' | 'castrated' | null;
+  breed:         string | null;
+  /** Cattle category (cattle_category enum): vaca|vaquillona|ternera|toro|novillo|ternero|torito */
+  category:      string | null;
+  /** Sheep category text: oveja|carnero|borrego|borrega|cordero|cordera|capon */
+  sheepCategory: string | null;
+  /** Species of this individual animal (matches herd.species) */
+  species:       'bovino' | 'ovino' | 'caprino' | 'equino' | 'porcino' | 'otro';
+  dob:           string | null;  // ISO date string
+  status:        'active' | 'sold' | 'deceased' | 'transferred';
+  notes:         string | null;
+  ownerName:     string | null;
+  color:         string | null;
+  origen:        string | null;  // cattle_origen enum
+  padreVid:      string | null;
+  madreVid:      string | null;
+  createdAt:     string;
+  updatedAt:     string;
+}
+
 export interface FarmDataShape {
   DEMO_FARM: typeof DEMO_FARM;
   PASTURES: Pasture[];
@@ -45,6 +74,7 @@ export interface FarmDataShape {
   HEALTH_RECORDS: HealthRecord[];
   MOVEMENTS: Movement[];
   INFRASTRUCTURE: InfrastructureFeature[];
+  CATTLE: CattleRecord[];
   isCustomFarm: boolean;
   /** The active farm's UUID (null until loaded from Supabase) */
   farmId: string | null;
@@ -67,6 +97,7 @@ const defaultData: FarmDataShape = IS_DEMO_MODE
       HEALTH_RECORDS: DEMO_HEALTH,
       MOVEMENTS: DEMO_MOVEMENTS,
       INFRASTRUCTURE: DEMO_INFRA,
+      CATTLE: [],
       isCustomFarm: false,
       farmId: null,
       farmSlug: null,
@@ -81,6 +112,7 @@ const defaultData: FarmDataShape = IS_DEMO_MODE
       HEALTH_RECORDS: [],
       MOVEMENTS: [],
       INFRASTRUCTURE: [],
+      CATTLE: [],
       isCustomFarm: false,
       farmId: null,
       farmSlug: null,
@@ -117,6 +149,7 @@ interface SupabaseHerd {
   farm_id: string;
   pasture_id: string | null;
   name: string;
+  species: string;
   cattle_count: number;
   breed: string | null;
   entry_date: string | null;
@@ -164,7 +197,7 @@ function mapHerd(
     pastureId: h.pasture_id ?? '',
     cattleCount: h.cattle_count,
     breed: h.breed ?? '',
-    species: 'bovino',
+    species: (h.species as Herd['species']) ?? 'bovino',
     status: 'active',
     entryDate: h.entry_date ? new Date(h.entry_date) : new Date(),
     coordinate: pastureCenter,
@@ -227,7 +260,7 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
     // Fetch herds
     const { data: herdRows } = await client
       .from('herds')
-      .select('id, farm_id, pasture_id, name, cattle_count, breed, entry_date')
+      .select('id, farm_id, pasture_id, name, species, cattle_count, breed, entry_date')
       .eq('farm_id', farmId);
 
     const herds: Herd[] = (herdRows ?? []).map((h: SupabaseHerd) => {
@@ -295,6 +328,42 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       notes:           (r.notes as string | null) ?? undefined,
     }));
 
+    // Fetch individual cattle
+    const { data: cattleRows } = await client
+      .from('cattle')
+      .select(`
+        id, farm_id, herd_id,
+        visual_tag_id, chip_id,
+        species, sex, breed, category, sheep_category, dob, status, notes,
+        owner_name, color, origen, padre_vid, madre_vid,
+        created_at, updated_at
+      `)
+      .eq('farm_id', farmId)
+      .order('visual_tag_id', { ascending: true });
+
+    const cattle: CattleRecord[] = (cattleRows ?? []).map((r: Record<string, unknown>) => ({
+      id:            r.id as string,
+      farmId:        r.farm_id as string,
+      herdId:        (r.herd_id as string | null),
+      visualTagId:   (r.visual_tag_id as string | null),
+      chipId:        (r.chip_id as string | null),
+      species:       ((r.species as string | null) ?? 'bovino') as CattleRecord['species'],
+      sex:           (r.sex as CattleRecord['sex']),
+      breed:         (r.breed as string | null),
+      category:      (r.category as string | null),
+      sheepCategory: (r.sheep_category as string | null),
+      dob:           (r.dob as string | null),
+      status:        (r.status as CattleRecord['status']) ?? 'active',
+      notes:         (r.notes as string | null),
+      ownerName:     (r.owner_name as string | null),
+      color:         (r.color as string | null),
+      origen:        (r.origen as string | null),
+      padreVid:      (r.padre_vid as string | null),
+      madreVid:      (r.madre_vid as string | null),
+      createdAt:     r.created_at as string,
+      updatedAt:     r.updated_at as string,
+    }));
+
     // Total area from all pastures
     const totalAreaHectares = pastures.reduce((s, p) => s + p.areaHectares, 0);
 
@@ -312,6 +381,7 @@ export function FarmDataProvider({ children }: { children: ReactNode }) {
       WEIGHTS: weights,
       HEALTH_RECORDS: healthRecords,
       MOVEMENTS: movements,
+      CATTLE: cattle,
       INFRASTRUCTURE: prev.INFRASTRUCTURE,
       isCustomFarm: true,
       farmId,

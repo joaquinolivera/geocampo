@@ -12,7 +12,8 @@ import ChatPanel from '@/components/ChatPanel';
 import MobileNav from '@/components/MobileNav';
 import type { SelectionState } from '@/lib/selection';
 import { useFarmData } from '@/lib/FarmDataContext';
-import { polygonAreaHectares, updatePasture } from '@/lib/farm-store';
+import { polygonAreaHectares } from '@/lib/farm-store';
+import { pasturesDb } from '@/lib/db/pastures';
 import { useCanDo } from '@/components/RoleGate';
 
 // Map must be dynamically imported — mapbox-gl uses browser APIs (no SSR)
@@ -33,7 +34,7 @@ interface FarmPageProps {
 }
 
 export default function FarmPage({ params: _params }: FarmPageProps) {
-  const { isCustomFarm, refresh } = useFarmData();
+  const { DEMO_FARM, isCustomFarm, refresh } = useFarmData();
   const { canEditPastures, canViewFinancials } = useCanDo();
 
   // Selection can be a pasture or an infrastructure feature
@@ -98,8 +99,9 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
     if (redrawPastureId) {
       // Redraw path — update existing pasture's geometry
       const coords: [number, number][][] = [[...drawingPoints, drawingPoints[0]]];
-      updatePasture(redrawPastureId, { coordinates: coords });
-      refresh();
+      void pasturesDb.update(redrawPastureId, { coordinates: coords }).then(() => {
+        refresh();
+      });
       setDrawingMode(false);
       setDrawingPoints([]);
       setRedrawPastureId(null);
@@ -251,6 +253,7 @@ export default function FarmPage({ params: _params }: FarmPageProps) {
         <PastureFormModal
           coordinates={drawnCoordinates}
           estimatedAreaHa={estimatedAreaHa}
+          farmId={DEMO_FARM.id}
           onClose={handlePastureFormClose}
           onSaved={handlePastureSaved}
         />
